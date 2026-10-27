@@ -44,7 +44,7 @@ Every tenant-scoped table contains an indexed, immutable `tenant_id UUID NOT NUL
 ### 1.2 DDL Implementation: Tenant RLS Blueprint
 
 ```sql
--- 1. Enable RLS on core clinical and financial tables
+-- 1. Enable RLS on core clinical, financial, and Phase 2 hospital operations tables
 ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE encounters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE observations ENABLE ROW LEVEL SECURITY;
@@ -52,6 +52,28 @@ ALTER TABLE billing_folios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE billing_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE preauthorizations ENABLE ROW LEVEL SECURITY;
+-- Phase 2 Hospital Operations Tables
+ALTER TABLE wards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE beds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inpatient_admissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE theatres ENABLE ROW LEVEL SECURITY;
+ALTER TABLE theatre_bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE maternity_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE newborn_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE radiology_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE radiology_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procurement_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procurement_order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goods_received_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grn_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insurance_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insurance_authorizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insurance_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_rosters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_roster_shifts ENABLE ROW LEVEL SECURITY;
 
 -- 2. Force RLS for table owners to avoid accidental superuser bypass in migrations
 ALTER TABLE patients FORCE ROW LEVEL SECURITY;
@@ -61,6 +83,28 @@ ALTER TABLE billing_folios FORCE ROW LEVEL SECURITY;
 ALTER TABLE billing_items FORCE ROW LEVEL SECURITY;
 ALTER TABLE claims FORCE ROW LEVEL SECURITY;
 ALTER TABLE preauthorizations FORCE ROW LEVEL SECURITY;
+-- Phase 2 Tables
+ALTER TABLE wards FORCE ROW LEVEL SECURITY;
+ALTER TABLE beds FORCE ROW LEVEL SECURITY;
+ALTER TABLE inpatient_admissions FORCE ROW LEVEL SECURITY;
+ALTER TABLE theatres FORCE ROW LEVEL SECURITY;
+ALTER TABLE theatre_bookings FORCE ROW LEVEL SECURITY;
+ALTER TABLE maternity_deliveries FORCE ROW LEVEL SECURITY;
+ALTER TABLE newborn_profiles FORCE ROW LEVEL SECURITY;
+ALTER TABLE radiology_orders FORCE ROW LEVEL SECURITY;
+ALTER TABLE radiology_reports FORCE ROW LEVEL SECURITY;
+ALTER TABLE referrals FORCE ROW LEVEL SECURITY;
+ALTER TABLE appointments FORCE ROW LEVEL SECURITY;
+ALTER TABLE procurement_orders FORCE ROW LEVEL SECURITY;
+ALTER TABLE procurement_order_items FORCE ROW LEVEL SECURITY;
+ALTER TABLE goods_received_notes FORCE ROW LEVEL SECURITY;
+ALTER TABLE grn_items FORCE ROW LEVEL SECURITY;
+ALTER TABLE insurance_policies FORCE ROW LEVEL SECURITY;
+ALTER TABLE insurance_authorizations FORCE ROW LEVEL SECURITY;
+ALTER TABLE insurance_claims FORCE ROW LEVEL SECURITY;
+ALTER TABLE departments FORCE ROW LEVEL SECURITY;
+ALTER TABLE staff_rosters FORCE ROW LEVEL SECURITY;
+ALTER TABLE staff_roster_shifts FORCE ROW LEVEL SECURITY;
 
 -- 3. Define the universal tenant isolation policy
 CREATE POLICY tenant_isolation_policy ON patients
@@ -83,7 +127,7 @@ CREATE POLICY tenant_isolation_policy ON claims
 
 ## 2. Entity-Relationship Model (ERD)
 
-The data model directly reflects healthcare domain boundaries while maintaining strict semantic alignment with **HL7® FHIR® R4** resources:
+The data model directly reflects healthcare domain boundaries while maintaining strict semantic alignment with **HL7® FHIR® R4** resources and **Phase 2 Inpatient & Specialized Hospital Operations**:
 
 ```mermaid
 erDiagram
@@ -100,6 +144,45 @@ erDiagram
     ENCOUNTERS ||--o{ CLAIMS : generates
     CLAIMS ||--o{ CLAIM_DIAGNOSES : items
     CLAIMS ||--o{ CLAIM_ATTACHMENTS : substantiates
+
+    %% Phase 2: Inpatient ADT, Wards & Beds
+    HEALTHCARE_FACILITIES ||--o{ WARDS : houses
+    WARDS ||--o{ BEDS : contains
+    PATIENTS ||--o{ INPATIENT_ADMISSIONS : admitted
+    BEDS ||--o{ INPATIENT_ADMISSIONS : accommodates
+
+    %% Phase 2: Operating Theatres & Surgeries
+    HEALTHCARE_FACILITIES ||--o{ THEATRES : equips
+    THEATRES ||--o{ THEATRE_BOOKINGS : schedules
+    PATIENTS ||--o{ THEATRE_BOOKINGS : undergoes
+
+    %% Phase 2: Maternity & Newborn
+    PATIENTS ||--o{ MATERNITY_DELIVERIES : delivers
+    MATERNITY_DELIVERIES ||--o{ NEWBORN_PROFILES : gives_birth_to
+
+    %% Phase 2: Radiology & Diagnostic Imaging
+    PATIENTS ||--o{ RADIOLOGY_ORDERS : orders
+    RADIOLOGY_ORDERS ||--o{ RADIOLOGY_REPORTS : produces
+
+    %% Phase 2: Referrals & Appointments
+    PATIENTS ||--o{ REFERRALS : referred
+    PATIENTS ||--o{ APPOINTMENTS : books
+
+    %% Phase 2: Medical Supplies & Procurement
+    HEALTHCARE_FACILITIES ||--o{ PROCUREMENT_ORDERS : issues
+    PROCUREMENT_ORDERS ||--o{ PROCUREMENT_ORDER_ITEMS : contains
+    PROCUREMENT_ORDERS ||--o{ GOODS_RECEIVED_NOTES : receives
+    GOODS_RECEIVED_NOTES ||--o{ GRN_ITEMS : details
+
+    %% Phase 2: Private Insurance Adapters
+    PATIENTS ||--o{ INSURANCE_POLICIES : covers
+    INSURANCE_POLICIES ||--o{ INSURANCE_AUTHORIZATIONS : authorizes
+    INSURANCE_POLICIES ||--o{ INSURANCE_CLAIMS : claims
+
+    %% Phase 2: Rosters & Departmental Assignments
+    HEALTHCARE_FACILITIES ||--o{ DEPARTMENTS : organizes
+    DEPARTMENTS ||--o{ STAFF_ROSTERS : schedules
+    STAFF_ROSTERS ||--o{ STAFF_ROSTER_SHIFTS : assigns
 
     TENANTS {
         uuid id PK
@@ -150,81 +233,198 @@ erDiagram
         timestamp consent_expires_at
     }
 
-    OBSERVATIONS {
+    WARDS {
         uuid id PK
         uuid tenant_id FK
-        uuid encounter_id FK
+        uuid facility_id FK
+        string ward_name
+        string ward_type "GENERAL, ICU, HDU, MATERNITY, PEDIATRIC, SURGICAL"
+        string gender_designation "MIXED, MALE, FEMALE"
+        int total_beds
+        int occupied_beds
+    }
+
+    BEDS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid ward_id FK
+        string bed_number
+        string bed_type "STANDARD, ICU, BASSINET, CRITICAL_CARE"
+        string status "VACANT, OCCUPIED, CLEANING, MAINTENANCE, RESERVED"
+        int version "Optimistic Locking"
+    }
+
+    INPATIENT_ADMISSIONS {
+        uuid id PK
+        uuid tenant_id FK
         uuid patient_id FK
-        string loinc_code "LOINC test identifier"
-        string display_name
-        numeric value_numeric
-        string value_string
-        string unit
-        string security_label "N, R, HIV, PSY"
-        timestamp recorded_at
+        uuid bed_id FK
+        string admission_number "ADM-YYYYMM-XXXX"
+        string status "ADMITTED, TRANSFERRED, DISCHARGED, CANCELLED"
+        timestamp admission_date
+        timestamp discharge_date
+        string admitting_diagnosis_icd11
     }
 
-    CONDITIONS {
+    THEATRES {
         uuid id PK
         uuid tenant_id FK
-        uuid encounter_id FK
-        string icd11_code "WHO ICD-11 MMS code"
-        string icd11_title
-        string clinical_status "active, resolved"
-        string verification_status "confirmed, provisional"
-        string condition_type "PRIMARY, SECONDARY, ADMISSION"
+        uuid facility_id FK
+        string name
+        string theatre_type "MAJOR, MINOR, ENDOSCOPY, CARDIAC_CATH, OPHTHALMIC"
+        string status "AVAILABLE, OCCUPIED, MAINTENANCE, DECONTAMINATION"
     }
 
-    BILLING_FOLIOS {
+    THEATRE_BOOKINGS {
         uuid id PK
         uuid tenant_id FK
-        uuid encounter_id FK
-        string folio_number
-        numeric total_gross_amount
-        numeric payer_amount
-        numeric patient_copay_amount
-        string folio_status "OPEN, CLOSED, DISCHARGED"
+        uuid theatre_id FK
+        uuid patient_id FK
+        string booking_number "THB-YYYYMM-XXXX"
+        timestamp scheduled_start_time
+        timestamp scheduled_end_time
+        string status "SCHEDULED, IN_THEATRE, RECOVERY, COMPLETED, CANCELLED"
+        string who_checklist_sign_in "Sign In Audit"
+        string who_checklist_time_out "Time Out Audit"
+        string who_checklist_sign_out "Sign Out Audit"
     }
 
-    BILLING_ITEMS {
+    MATERNITY_DELIVERIES {
         uuid id PK
         uuid tenant_id FK
-        uuid billing_folio_id FK
-        string item_type "CONSULTATION, PROCEDURE, DRUG, LAB, BED"
-        string item_code "ICHI or HPT SKU"
-        string item_name
-        int quantity
-        numeric unit_price
+        uuid mother_patient_id FK
+        string delivery_mode "SVD, CS_EMERGENCY, CS_ELECTIVE, ASSISTED_VACUUM, BREECH"
+        string delivery_outcome "LIVE_BIRTH, FRESH_STILLBIRTH, MACERATED_STILLBIRTH"
+        numeric blood_loss_ml
+        jsonb partograph_data
+    }
+
+    NEWBORN_PROFILES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid delivery_id FK
+        uuid baby_patient_id FK "Linked Patient Record"
+        string birth_order "SINGLETON, TWIN_1, TWIN_2, TRIPLET"
+        int apgar_1min
+        int apgar_5min
+        int apgar_10min
+        numeric birth_weight_kg
+        numeric head_circumference_cm
+    }
+
+    RADIOLOGY_ORDERS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid patient_id FK
+        string order_number "RAD-YYYYMM-XXXX"
+        string modality "XR, CT, MRI, US, MG, NM"
+        string body_site
+        string clinical_indication
+        boolean is_confidential_specialist "Specialist Authorization Protected"
+        string status "REQUESTED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED"
+    }
+
+    RADIOLOGY_REPORTS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid radiology_order_id FK
+        string pacs_study_uid "DICOM Study Instance UID"
+        text findings
+        text impression
+        string status "PRELIMINARY, FINAL, AMENDED, CANCELLED"
+        text addenda "Audited Addendum Trail"
+    }
+
+    REFERRALS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid patient_id FK
+        string referral_number "REF-YYYYMM-XXXX"
+        string referral_direction "OUTBOUND, INBOUND"
+        string target_facility_kmfl "KMFL Master Facility Code"
+        string urgency "ROUTINE, PRIORITY, EMERGENCY"
+        string status "DRAFT, DISPATCHED, RECEIVED, ACCEPTED, COMPLETED, CANCELLED"
+        text counter_referral_notes
+        timestamp counter_referral_date
+    }
+
+    APPOINTMENTS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid patient_id FK
+        uuid practitioner_id FK
+        timestamp scheduled_start_time
+        timestamp scheduled_end_time
+        string status "SCHEDULED, CONFIRMED, CHECKED_IN, IN_CONSULTATION, COMPLETED, CANCELLED"
+    }
+
+    PROCUREMENT_ORDERS {
+        uuid id PK
+        uuid tenant_id FK
+        string po_number "PO-YYYYMM-XXXX"
+        string supplier_name
         numeric total_amount
-        string vat_status "EXEMPT, ZERO_RATED, STANDARD"
-        string etims_item_classification_code
-        string coverage_scheme "PHC, SHIF, ECCIF, PRIVATE_CASH"
+        string status "DRAFT, SUBMITTED, APPROVED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED"
     }
 
-    CLAIMS {
+    GOODS_RECEIVED_NOTES {
         uuid id PK
         uuid tenant_id FK
-        uuid encounter_id FK
-        uuid billing_folio_id FK
-        string external_claim_number "SHA Claim Reference"
-        string fund_type "PHC, SHIF, ECCIF"
-        string payment_mechanism "PER_DIEM, FEE_FOR_SERVICE, CAPITATION"
-        string claim_status "DRAFT, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, PAID"
-        numeric claimed_amount
-        numeric approved_amount
-        timestamp submitted_at
-        timestamp emergency_sla_deadline "24h for ECCIF"
+        uuid procurement_order_id FK
+        string grn_number "GRN-YYYYMM-XXXX"
+        string delivery_note_number
+        boolean inspection_passed
+        string storage_location_notes
     }
 
-    PREAUTHORIZATIONS {
+    INSURANCE_POLICIES {
         uuid id PK
         uuid tenant_id FK
-        uuid encounter_id FK
-        string external_preauth_number "SHA Preauth Reference"
-        string preauth_type "NORMAL, ELECTIVE, SURGICAL, ONCOLOGY, RENAL"
-        string preauth_status "PENDING, APPROVED, REJECTED, CANCELLED"
+        uuid patient_id FK
+        string insurer_code "JUBILEE, AAR, APA, BRITAM, OLD_MUTUAL"
+        string policy_number
+        string member_number
+        numeric inpatient_limit
+        numeric outpatient_limit
+        numeric copay_amount
+        boolean is_active
+    }
+
+    INSURANCE_AUTHORIZATIONS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid policy_id FK
+        string preauth_number "PA-INS-YYYYMM-XXXX"
+        numeric requested_amount
         numeric approved_amount
-        timestamp valid_until
+        string status "PENDING, APPROVED, REJECTED, CANCELLED"
+    }
+
+    DEPARTMENTS {
+        uuid id PK
+        uuid tenant_id FK
+        string department_code
+        string department_name
+        boolean is_active
+    }
+
+    STAFF_ROSTERS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid department_id FK
+        string roster_name
+        date period_start_date
+        date period_end_date
+        string status "DRAFT, PUBLISHED, ARCHIVED"
+    }
+
+    STAFF_ROSTER_SHIFTS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid roster_id FK
+        uuid user_id FK
+        date shift_date
+        string shift_type "MORNING, AFTERNOON, NIGHT, ON_CALL, OFF"
     }
 ```
 

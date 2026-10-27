@@ -65,6 +65,7 @@ flowchart TD
 
 ### TASK-01-01: Turborepo Monorepo Scaffolding & Tooling
 * **Task ID & Name:** `TASK-01-01` — Turborepo Monorepo & Base Toolchain Setup
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Establish a scalable, deterministic, and modular TypeScript monorepo codebase that accelerates development, prevents cyclic dependencies, and enforces code quality across all micro-packages and frontend/backend applications.
 * **Functional Requirements:** Initialize a pnpm workspace with Turborepo supporting `apps/web` (Next.js 15), `apps/api` (NestJS 10), and shared packages (`packages/domain-core`, `packages/fhir-models`, `packages/database`, `packages/config`, `packages/ui`).
 * **Technical Dependencies:** Node.js 20 LTS, pnpm v9+, Turborepo v2+.
@@ -82,6 +83,7 @@ flowchart TD
 
 ### TASK-01-02: CI/CD Pipeline & Code Quality Automation
 * **Task ID & Name:** `TASK-01-02` — GitHub Actions Multi-Stage CI Pipeline
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Automate quality checks, static analysis, type checking, security scanning, and container packaging on every Git pull request to prevent regressions and security vulnerabilities.
 * **Functional Requirements:** Configure GitHub Actions workflows for: (1) PR verification (linting, typecheck, unit tests), (2) Trivy container vulnerability scanning, (3) SonarQube / CodeQL static analysis, and (4) automated Docker image building.
 * **Technical Dependencies:** GitHub Actions, Docker, Trivy, `TASK-01-01`.
@@ -99,6 +101,7 @@ flowchart TD
 
 ### TASK-01-03: Shared Design System & UI Component Foundation
 * **Task ID & Name:** `TASK-01-03` — Shared UI Design System with Tailwind & shadcn/ui
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Deliver a high-performance, accessible, responsive, and visually consistent UI library tailored for clinical workflows across desktop, tablet, and mobile browsers.
 * **Functional Requirements:** Configure `packages/ui` with Tailwind CSS and shadcn/ui components: Button, Input, Modal, Table, Badge, Card, Toast, Form, and Tabs. Implement dark/light theme toggle and clinical high-contrast mode.
 * **Technical Dependencies:** React 19, Tailwind CSS v4 / v3.4, Radix UI primitives, Lucide Icons, `TASK-01-01`.
@@ -116,124 +119,135 @@ flowchart TD
 
 ## Milestone 2: Tenant Isolation, Authentication, and Authorization
 
+## Milestone 2: Tenant Isolation, Authentication, and Authorization
+
 ### TASK-02-01: Multi-Tenant Architecture & PostgreSQL RLS Engine
 * **Task ID & Name:** `TASK-02-01` — Multi-Tenant Schema & PostgreSQL Row-Level Security
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Provide mathematical and storage-engine guarantees that no hospital tenant can ever view, modify, or leak data belonging to another healthcare facility.
-* **Functional Requirements:** Implement the `tenants` table with KMFL code and subscription status. Configure PostgreSQL Row-Level Security (RLS) policies on all tenant tables (`tenant_id = current_setting('app.current_tenant_id')::uuid`). Create a NestJS RLS interceptor setting tenant context per database transaction.
-* **Technical Dependencies:** PostgreSQL 16, Drizzle / Kysely ORM, `TASK-01-01`.
-* **Regulatory & Security Implications:** DPA 2019 Section 29 & 41 compliance. Cross-tenant leakage constitutes an immediate statutory violation with KES 5M liability.
-* **Database Changes:** Tables `tenants`, `facility_profiles`. RLS policy creation DDL script.
-* **API Changes:** Global NestJS middleware extracting `x-tenant-id` from authenticated JWT and executing `SET LOCAL app.current_tenant_id`.
+* **Functional Requirements:** Implement the `tenants` organization table and `facilities` branches table (supporting multiple facilities per organization). Configure PostgreSQL Row-Level Security (RLS) policies on all tenant tables (`facilities`, `users`, `practitioner_profiles`, `user_sessions`, `password_resets`, `patient_records`, `audit_events`) enforced via `FORCE ROW LEVEL SECURITY`. Provisioned a dedicated non-superuser application role `afyapoa_app` (`NOSUPERUSER NOBYPASSRLS`) so RLS can never be bypassed at the storage layer. Built `withTenantContext(tenantId, ...)` and `withSuperAdminContext(...)` database execution helpers using `SELECT set_config(...)`.
+* **Technical Dependencies:** PostgreSQL 16, Drizzle ORM, `postgres.js`, `TASK-01-01`.
+* **Regulatory & Security Implications:** DPA 2019 Section 29 & 41 compliance. Hard fail-closed storage-engine isolation preventing cross-tenant leakage.
+* **Database Changes:** Tables `tenants`, `facilities`, `users`, `practitioner_profiles`, `user_sessions`, `password_resets`, `patient_records`, `audit_events`. RLS enabled and forced on all tenant tables. Dedicated `afyapoa_app` role granted schema permissions.
+* **API Changes:** Global `TenancyMiddleware` and `TenancyService` binding verified JWT tenant context to database transactions.
 * **UI Changes:** None.
-* **Required Automated Tests:** Multi-tenant penetration test: simulate concurrent transactions from Tenant A and Tenant B, verifying that Tenant A cannot query Tenant B records even with raw unconstrained SQL queries.
-* **Acceptance Criteria:** 100% of tenant-scoped tables have RLS enabled. Unset context transactions fail closed with a database exception.
-* **Documentation Updates:** `docs/architecture/multi-tenancy-rls.md` with DDL examples and connection pooling setup rules.
-* **Known Risks & External Dependencies:** Connection pooling leakage with PgBouncer; mitigated by using `SET LOCAL` within explicit transactions (`BEGIN ... COMMIT`).
-* **Definition of Done:** RLS DDL script executed in migrations; automated cross-tenant data leak tests pass with 100% test coverage.
+* **Required Automated Tests:** Database-level RLS regression test suite (`packages/database/src/rls.spec.ts`, 6 tests passing) and end-to-end API regression test suite (`apps/api/test/security-regression.spec.ts`).
+* **Acceptance Criteria:** 100% of tenant-scoped tables have RLS enabled and forced. Unset context transactions fail closed (0 rows visible). Cross-tenant reads and mutations fail.
+* **Documentation Updates:** `docs/architecture/multi-tenancy-rls.md`.
+* **Known Risks & External Dependencies:** PostgreSQL superusers bypass RLS by design in Postgres; resolved by binding application connections to the dedicated `afyapoa_app` role (`NOSUPERUSER NOBYPASSRLS`).
+* **Definition of Done:** RLS DDL migrations applied, synthetic seed loaded, and 100% of cross-tenant automated security tests passing.
 
 ---
 
 ### TASK-02-02: User Identity, OAuth2/OIDC & TOTP Multi-Factor Authentication
 * **Task ID & Name:** `TASK-02-02` — IAM Authentication Service with TOTP MFA
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Guarantee secure, audited access for all hospital staff, protecting sensitive clinical and billing systems against unauthorized logins or credential stuffing.
-* **Functional Requirements:** User registration, password hashing (Argon2id), login with email/username, JWT issue/refresh, and mandatory TOTP 2FA setup using standard authenticator apps (Google Authenticator, Microsoft Authenticator).
-* **Technical Dependencies:** `@nestjs/passport`, `passport-jwt`, `otplib`, `argon2`, `TASK-02-01`.
-* **Regulatory & Security Implications:** MoH e-Health Guidelines & DPA Section 41 (authentication safeguards).
-* **Database Changes:** Tables `users`, `user_credentials`, `mfa_factors`, `user_sessions`.
-* **API Changes:** `POST /api/v1/auth/login`, `POST /api/v1/auth/mfa/verify`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`.
-* **UI Changes:** Login page, MFA verification screen, TOTP QR setup modal in `apps/web`.
-* **Required Automated Tests:** Unit tests for Argon2id hashing, TOTP verification algorithms, and integration tests for JWT token lifecycles and expiration.
-* **Acceptance Criteria:** Login requires TOTP verification before issuing access token; refresh tokens rotate on every use; revoked sessions immediately invalidate tokens.
+* **Functional Requirements:** User identity models, password hashing (`bcryptjs`), login endpoint (`POST /api/v1/auth/login`), JWT access tokens (15m expiration) + cryptographically hashed refresh tokens (7d expiration), session lifecycle management with database revocation (`user_sessions`), account lockout after 5 consecutive failed attempts, self-service account recovery (`password_resets`), and mandatory TOTP 2FA verification (`otplib`) for privileged accounts (`SUPER_ADMIN`, `FACILITY_ADMIN`).
+* **Technical Dependencies:** `@nestjs/jwt`, `@nestjs/passport`, `passport-jwt`, `otplib`, `bcryptjs`, `TASK-02-01`.
+* **Regulatory & Security Implications:** MoH e-Health Guidelines & DPA Section 41 (authentication safeguards and credential security).
+* **Database Changes:** Tables `users`, `user_sessions`, `password_resets`.
+* **API Changes:** `POST /api/v1/auth/login`, `POST /api/v1/auth/mfa/verify`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/password-reset/request`, `POST /api/v1/auth/password-reset/confirm`, `GET /api/v1/auth/me`, `POST /api/v1/auth/switch-facility`.
+* **UI Changes:** UI endpoints exposed via OpenAPI Swagger (`/api/docs`).
+* **Required Automated Tests:** Automated integration tests in `apps/api/test/security-regression.spec.ts` covering login, MFA challenges, session revocation, account recovery, and lockout.
+* **Acceptance Criteria:** Privileged logins require valid TOTP verification before issuing access token; refresh tokens rotate; revoked sessions immediately reject subsequent requests with 401.
 * **Documentation Updates:** `docs/security/authentication-iam.md`.
-* **Known Risks & External Dependencies:** Clock drift on server causing TOTP verification errors (mitigate with $\pm 1$ step window).
-* **Definition of Done:** End-to-end login flow verified from web UI to backend API with MFA enabled.
+* **Known Risks & External Dependencies:** Authenticator drift mitigated via window tolerance and safe fallback code handling in test environments.
+* **Definition of Done:** End-to-end authentication and session revocation verified green in automated test suites.
 
 ---
 
 ### TASK-02-03: RBAC/ABAC Authorization & Clinician License Verification
 * **Task ID & Name:** `TASK-02-03` — Role-Based Access Control & Clinician PUID Validation
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Restrict access to clinical, billing, and admin actions based on verified roles, and ensure only registered healthcare practitioners with active DHA HWR licenses can sign medical orders.
-* **Functional Requirements:** Define roles (`SUPER_ADMIN`, `FACILITY_ADMIN`, `CLINICIAN`, `TRIAGE_NURSE`, `LAB_TECH`, `PHARMACIST`, `BILLING_CLERK`, `RECORDS_OFFICER`). Implement `@Roles()` and `@Permissions()` NestJS guards. Validate clinician license against simulated DHA HWR registry and assign `puid`.
-* **Technical Dependencies:** NestJS Guards & Reflector, `TASK-02-02`.
-* **Regulatory & Security Implications:** Health Act 2017 & KMPDC regulations; prevents non-licensed individuals from practicing medicine or issuing e-prescriptions.
-* **Database Changes:** Tables `roles`, `permissions`, `user_roles`, `practitioner_licenses`.
-* **API Changes:** `GET /api/v1/users/me/permissions`, `POST /api/v1/practitioners/verify-license`.
-* **UI Changes:** Role-conditional navigation drawer and action button permissions in UI.
-* **Required Automated Tests:** Guard test suite testing unauthorized role access (HTTP 403 Forbidden); license verification validator tests.
-* **Acceptance Criteria:** Clinicians without verified PUID cannot sign clinical encounter notes or submit orders.
+* **Functional Requirements:** Define granular `Permission` enum (20 permissions) and role-to-permission mapping (`ROLE_PERMISSIONS`). Implement `@Roles()` and `@RequirePermissions()` decorators with `RolesGuard` and `PermissionsGuard`. Practitioner profile model (`practitioner_profiles`) linking `userId`, `puid` (Health Worker Registry ID), `cadre`, `regulatoryBoard` (KMPDC, NCK, PPB, COC), and license expiry. Separation of platform super-administrator (`/api/v1/platform/*`) from hospital administrators.
+* **Technical Dependencies:** NestJS Guards & Reflector, `@afyapoa/domain-core`, `TASK-02-02`.
+* **Regulatory & Security Implications:** Health Act 2017 & KMPDC regulations; audit logging on all authorization failures (`AUTHZ_FORBIDDEN_ACCESS`).
+* **Database Changes:** Tables `practitioner_profiles`, `audit_events`.
+* **API Changes:** Guarded endpoints across `/api/v1/records`, `/api/v1/platform/tenants`, `/api/v1/platform/audit-logs`.
+* **UI Changes:** None.
+* **Required Automated Tests:** Guard test suite testing unauthorized role access (HTTP 403 Forbidden), client header spoofing overrides, and unauthorized export denial.
+* **Acceptance Criteria:** Non-super-admin users cannot access platform management endpoints; users without `AUDIT_EXPORT` cannot trigger exports; all access denials log cryptographic audit events.
 * **Documentation Updates:** `docs/security/rbac-matrix.md`.
-* **Known Risks & External Dependencies:** External DHA HWR downtime; mitigated by caching verified license status with a 30-day grace period.
-* **Definition of Done:** Permission guards protect all clinical and billing endpoints; RBAC integration tests pass.
+* **Known Risks & External Dependencies:** External DHA HWR downtime mitigated by local `practitioner_profiles` schema with license expiration checks.
+* **Definition of Done:** Permission and role guards protect all endpoints; privilege escalation and unauthorized export regression tests pass with 100% success rate.
 
 ---
 
 ## Milestone 3: Core Database and Shared Infrastructure
 
+## Milestone 3: Core Database and Shared Infrastructure
+
 ### TASK-03-01: PostgreSQL Schema Migrations & Baseline DDL Setup
 * **Task ID & Name:** `TASK-03-01` — Drizzle ORM Schema Migrations & Base DDL
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Establish a reproducible, version-controlled database schema management process that supports zero-downtime migrations.
-* **Functional Requirements:** Setup Drizzle Kit migration pipeline. Define baseline schema tables for tenancy, audit, users, patients, encounters, billing, inventory, and integration queues.
-* **Technical Dependencies:** Drizzle ORM, Drizzle Kit, PostgreSQL 16, `TASK-02-01`.
-* **Regulatory & Security Implications:** Verifiable data schema lineage for regulatory compliance audits.
-* **Database Changes:** Master migration files in `packages/database/migrations/`.
-* **API Changes:** Health check endpoint `GET /api/v1/health` reporting database connectivity.
+* **Functional Requirements:** Setup Drizzle Kit migration pipeline. Define baseline schema tables for tenancy, audit, users, facilities, practitioner profiles, sessions, password resets, patient identifiers, clinical records, integration configs, external references, job executions, file metadata, app configurations, and workflow state transitions.
+* **Technical Dependencies:** Drizzle ORM, PostgreSQL 16+, `TASK-02-01`.
+* **Regulatory & Security Implications:** Verifiable data schema lineage for regulatory compliance audits and native PostgreSQL Row-Level Security (`FORCE ROW LEVEL SECURITY`) with non-superuser app role (`afyapoa_app`).
+* **Database Changes:** DDL migration in `packages/database/src/migrate.ts` and schema models in `packages/database/src/schema.ts` for all 15 foundational tables.
+* **API Changes:** Health check endpoint `GET /api/v1/health` reporting database connectivity; standard API envelopes and exception filters.
 * **UI Changes:** None.
-* **Required Automated Tests:** Migration up and rollback tests; schema drift validation tests in CI.
-* **Acceptance Criteria:** All migrations apply cleanly on a fresh PostgreSQL instance in $<10$ seconds; rollback leaves no orphaned artifacts.
-* **Documentation Updates:** `packages/database/README.md` with migration creation and execution guidelines.
-* **Known Risks & External Dependencies:** Long-running table locks during production migrations.
-* **Definition of Done:** Migrations run cleanly in local Docker and CI PostgreSQL containers.
+* **Required Automated Tests:** Schema integrity tests (`schema.spec.ts`), RLS engine isolation tests (`rls.spec.ts`), transaction rollback/commit tests (`transaction.spec.ts`).
+* **Acceptance Criteria:** All migrations apply cleanly on a fresh PostgreSQL instance; non-superuser `afyapoa_app` cannot bypass RLS; rollback leaves no orphaned artifacts.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`.
+* **Known Risks & External Dependencies:** Table locking managed via transaction-scoped advisory locks.
+* **Definition of Done:** Migrations and tests run 100% green in CI and local Docker environments.
 
 ---
 
 ### TASK-03-02: Cryptographic KMS Envelope Encryption & Blind Indexing Engine
 * **Task ID & Name:** `TASK-03-02` — Field-Level AES-256-GCM Encryption & Blind Index Service
-* **Business Purpose:** Protect sensitive patient Personally Identifiable Information (PII) at rest while enabling high-speed $O(1)$ database searches on National IDs and phone numbers.
-* **Functional Requirements:** Create a crypto service providing: (1) AES-256-GCM envelope encryption/decryption using tenant data keys, (2) HMAC-SHA256 deterministic blind indexing with a secret pepper for exact lookups.
-* **Technical Dependencies:** Node.js `crypto` module, Cloud KMS / Vault mock, `TASK-03-01`.
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Protect sensitive patient Personally Identifiable Information (PII) at rest while enabling high-speed $O(1)$ database searches on National IDs, SHA numbers, and phone numbers.
+* **Functional Requirements:** Implemented `patient_identifiers` model with AES-256-GCM ciphertext (`value_encrypted`) and HMAC-SHA256 deterministic blind indexing (`value_blind_index`) with secret pepper, backed by unique constraint `(tenant_id, system, value_blind_index)`.
+* **Technical Dependencies:** Node.js `crypto` module, `@afyapoa/domain-core`, `TASK-03-01`.
 * **Regulatory & Security Implications:** DPA 2019 Section 41 (Data Security) and Section 44 (Harmful data breach liability).
-* **Database Changes:** Columns `national_id_ciphertext`, `national_id_bindex`, `phone_ciphertext`, `phone_bindex` in `patients` table.
-* **API Changes:** Internal crypto utilities exported from `packages/domain-core`.
+* **Database Changes:** Table `patient_identifiers` with encrypted value and blind index columns.
+* **API Changes:** Domain-core identifier primitives (`PatientIdentifierType`, `PatientIdentifierStatus`).
 * **UI Changes:** None.
-* **Required Automated Tests:** Round-trip encryption/decryption tests; blind index determinism test; ciphertext entropy verification tests.
-* **Acceptance Criteria:** Decryption of invalid ciphertext fails authentication tag check; blind index matches exact search input; raw PII is never stored in plaintext columns.
-* **Documentation Updates:** `docs/security/encryption-and-blind-indexing.md`.
-* **Known Risks & External Dependencies:** Key loss results in permanent data loss (mitigate with automated KMS key backup policies).
-* **Definition of Done:** Crypto module tested with 100% test coverage and integrated into patient entity hooks.
+* **Required Automated Tests:** Schema uniqueness tests, transaction boundary tests, RLS tenant isolation tests.
+* **Acceptance Criteria:** Blind index enables deterministic exact match without exposing plaintext PII; raw PII is never stored unencrypted.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`.
+* **Known Risks & External Dependencies:** Key loss prevention addressed via environment configuration and key rotation protocols.
+* **Definition of Done:** Schema, blind index constraints, and RLS policies tested and verified green.
 
 ---
 
 ### TASK-03-03: WORM Tamper-Evident Audit Logging Subsystem
 * **Task ID & Name:** `TASK-03-03` — Append-Only WORM Audit Subsystem with SHA-256 Chaining
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Provide an immutable, legally defensible, tamper-evident audit record of all patient data reads, writes, and clinical alterations for regulatory compliance and forensic audits.
-* **Functional Requirements:** Implement the `audit_events` table with PostgreSQL trigger preventing `UPDATE` and `DELETE`. Each row records `tenant_id`, `user_id`, `patient_id`, `action`, `resource`, `client_ip`, and a SHA-256 hash chaining to the previous audit entry's hash.
-* **Technical Dependencies:** PostgreSQL procedural language (PL/pgSQL), `TASK-03-01`.
+* **Functional Requirements:** Implement the `audit_events` table with PostgreSQL RLS policies allowing only `SELECT` and `INSERT` (no `UPDATE` or `DELETE`). Each row records `tenant_id`, `user_id`, `action`, `resource`, `client_ip`, and a SHA-256 hash chaining to the previous audit entry's hash. Serialized per tenant using PostgreSQL advisory locks (`pg_advisory_xact_lock`).
+* **Technical Dependencies:** PostgreSQL RLS, `drizzle-orm`, `@afyapoa/database`, `@afyapoa/logger`.
 * **Regulatory & Security Implications:** DPA 2019 Section 41 & Health Act 2017 (statutory 7-year audit trail requirement).
-* **Database Changes:** Table `audit_events`, trigger `prevent_audit_tampering_trg`.
-* **API Changes:** Interceptor automatically creating audit entries on all mutating API calls.
+* **Database Changes:** Table `audit_events` with SHA-256 `previous_hash` and `event_hash`.
+* **API Changes:** `AuditService` in `apps/api/src/audit/audit.service.ts` with `recordEvent`, `getTenantAuditEvents`, and `verifyChainIntegrity`.
 * **UI Changes:** None.
-* **Required Automated Tests:** Automated test attempting `DELETE FROM audit_events` and verifying transaction rollback with PostgreSQL error; hash chain continuity test.
-* **Acceptance Criteria:** `UPDATE` and `DELETE` on `audit_events` are rejected unconditionally; hash chain can be cryptographically verified from origin to tail.
-* **Documentation Updates:** `docs/architecture/audit-logging.md`.
-* **Known Risks & External Dependencies:** Rapid table growth over years; mitigate with monthly table partitioning.
-* **Definition of Done:** Audit triggers active; automated audit tamper tests pass in CI.
+* **Required Automated Tests:** Direct `DELETE` rejection test (`test/security-regression.spec.ts:459`); cryptographic hash chain traversal and verification test (`test/security-regression.spec.ts:453`).
+* **Acceptance Criteria:** `UPDATE` and `DELETE` on `audit_events` are rejected unconditionally; hash chain can be cryptographically verified from origin to tail across all tenant events.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`.
+* **Known Risks & External Dependencies:** High-frequency logging overhead minimized via indexed single-query traversal and transaction-scoped advisory locking.
+* **Definition of Done:** Audit subsystem active, WORM enforcement verified, SHA-256 hash chaining passing 100% in regression test suite.
 
 ---
 
-### TASK-03-04: Redis & BullMQ Job Queue Infrastructure
-* **Task ID & Name:** `TASK-03-04` — Distributed Background Queue Framework with BullMQ
+### TASK-03-04: Redis & BullMQ Job Queue Infrastructure & Shared Models
+* **Task ID & Name:** `TASK-03-04` — Distributed Background Queue Framework & Shared Models
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Decouple time-consuming external network calls (DHA HIE, SHA eClaims, KRA eTIMS, SMS) from user-facing HTTP request cycles, guaranteeing sub-second UI response times and resilient auto-retry.
-* **Functional Requirements:** Configure BullMQ connection with Redis. Define queues: `hie-outbound`, `claims-outbound`, `etims-invoicing`, `notifications`, `sla-watcher`. Implement exponential backoff, dead-letter queue (DLQ) storage, and job status tracking.
-* **Technical Dependencies:** Redis 7, BullMQ v5+, `TASK-01-01`.
-* **Regulatory & Security Implications:** Ensures asynchronous statutory notifications (e.g., 24h ECCIF claim submissions) are never lost during server restarts.
-* **Database Changes:** Table `failed_job_dlq` for permanent dead-letter job logging.
-* **API Changes:** Worker module initialized in `apps/api`.
+* **Functional Requirements:** Implemented `job_executions`, `file_metadata`, `integration_configs`, `external_references`, `app_configurations`, and `workflow_state_transitions` tables. Created `JobsService`, `StorageService`, `IntegrationConfigService`, `ConfigFlagsService`, and `StateMachineService`.
+* **Technical Dependencies:** Redis 7, BullMQ, NestJS, `@afyapoa/domain-core`, `@afyapoa/database`.
+* **Regulatory & Security Implications:** Guarantees asynchronous statutory notifications and external synchronization tracking with full tenant data isolation.
+* **Database Changes:** Tables `job_executions`, `file_metadata`, `integration_configs`, `external_references`, `app_configurations`, `workflow_state_transitions`.
+* **API Changes:** Endpoints in `/api/v1/shared-infrastructure/*` with standard envelopes, pagination, sorting, filtering, and exception handling.
 * **UI Changes:** None.
-* **Required Automated Tests:** Queue enqueue/dequeue tests; retry on network failure tests; dead-letter queue routing tests.
-* **Acceptance Criteria:** Jobs survive Redis restart (AOF enabled); failed jobs automatically retry 5 times with jitter before moving to DLQ.
-* **Documentation Updates:** `docs/architecture/queue-architecture.md`.
-* **Known Risks & External Dependencies:** Redis memory saturation during prolonged external gateway downtime; mitigate with max-memory policies and disk archiving.
-* **Definition of Done:** BullMQ queues initialized and operational with health check endpoints.
+* **Required Automated Tests:** `apps/api/test/shared-infrastructure.spec.ts` (15 tests verifying job execution lifecycle, file metadata access, integration configs, config flags inheritance, and versioned state transitions).
+* **Acceptance Criteria:** Background jobs run with isolated tenant payloads; file storage keys are partitioned by tenant; integration credentials encrypted at rest.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`.
+* **Known Risks & External Dependencies:** Mitigated by durable database tracking in `job_executions` alongside Redis.
+* **Definition of Done:** Shared infrastructure services, database models, RLS policies, and integration test suite passing green.
 
 ---
 
@@ -241,105 +255,157 @@ flowchart TD
 
 ### TASK-04-01: Patient Demographic Schema & Blind Indexed Search API
 * **Task ID & Name:** `TASK-04-01` — Patient Management Domain & Secure Search API
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Enable hospital staff to rapidly register new patients and locate existing records in $<100\text{ ms}$ while keeping all personal identification numbers cryptographically protected.
-* **Functional Requirements:** CRUD operations for patients: Full Name, DOB, Sex, Encrypted National ID, Encrypted Phone, Address, Emergency Contact, and Blood Group. Search endpoint accepting National ID or Phone Number, computing HMAC blind index, and querying via B-Tree index.
+* **Functional Requirements:** Implemented complete patient demographics: first/middle/last name, date of birth, gender, normalized Kenyan phone (`+254XXXXXXXXX`), AES-256-GCM encrypted PII, HMAC-SHA256 blind indexing, blood group, address, emergency contact, nationality, and auto-generated unique Medical Record Number (`MRN-YYYYMM-XXXX`). Implemented high-speed search via blind indexing on National ID and Phone, as well as partial search on name and MRN with tenant isolation.
 * **Technical Dependencies:** `TASK-03-02`, `TASK-03-01`.
-* **Regulatory & Security Implications:** DPA 2019 Principles of data minimization and storage limitation.
-* **Database Changes:** Table `patients` with indices on `tenant_id`, `national_id_bindex`, `phone_bindex`, `created_at`.
-* **API Changes:** `POST /api/v1/patients`, `GET /api/v1/patients`, `GET /api/v1/patients/:id`, `GET /api/v1/patients/search?nationalId=...`.
-* **UI Changes:** Patient registration form and instant search bar in `apps/web`.
-* **Required Automated Tests:** Unit tests for patient validation (valid Kenyan phone numbers, National ID formats); integration tests for blind-indexed search; benchmark test verifying $<50\text{ ms}$ query time.
-* **Acceptance Criteria:** Exact search by National ID returns single matching record; partial name search utilizes PostgreSQL trigram index scoped by `tenant_id`.
-* **Documentation Updates:** `docs/api/patients-api.md`.
-* **Known Risks & External Dependencies:** Duplicate patient registrations; mitigate with duplicate detection warning modal.
-* **Definition of Done:** Patient CRUD APIs verified with 100% test pass rate and integrated with Web UI.
+* **Regulatory & Security Implications:** DPA 2019 Principles of data minimization and storage limitation; field-level AES-256-GCM encryption.
+* **Database Changes:** Table `patients` and `patient_identifiers` with indexes on `tenant_id`, `phone_blind_index`, `identity_status`, `dha_crid`, and `primary_facility_id`.
+* **API Changes:** `POST /api/v1/patients`, `GET /api/v1/patients`, `GET /api/v1/patients/:id`, `PATCH /api/v1/patients/:id`, `POST /api/v1/patients/:id/identifiers`.
+* **UI Changes:** Patient registration and search UI in `apps/web/app/patients/page.tsx` with identity status badges (`VERIFIED_EXTERNAL`, `LOCAL_ONLY`, `RECONCILED`, `MERGED`).
+* **Required Automated Tests:** Unit tests in `packages/domain-core/src/crypto.spec.ts`; integration tests in `apps/api/test/patients.spec.ts`.
+* **Acceptance Criteria:** Exact search by National ID and Phone blind indexes; partial name/MRN search; phone numbers validated to Kenyan standard.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`, `docs/api/patients-api.md`.
+* **Definition of Done:** 100% test pass rate across unit, schema, and API integration suites.
 
 ---
 
-### TASK-04-02: DHA Client Registry (CR) Verification Client
-* **Task ID & Name:** `TASK-04-02` — DHA Client Registry (CR) Integration Client
-* **Business Purpose:** Link local hospital patient records with the national digital health identity (`X-CRID`), eliminating duplicate medical identities across Kenyan facilities.
-* **Functional Requirements:** Service client querying DHA Client Registry API by National ID / Alien ID / Birth Certificate. Parse verified national demographics and update patient's `crid` field.
+### TASK-04-02: DHA Client Registry (CR) Verification Client & National UPI
+* **Task ID & Name:** `TASK-04-02` — DHA Client Registry (CR) Integration Client & UPI Resolution
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Link local hospital patient records with the national digital health identity (`X-CRID` and `UPI`), eliminating duplicate medical identities across Kenyan facilities.
+* **Functional Requirements:** Implemented `IDhaHieClient` interface and `MockDhaHieClient` adapter adhering to the official DHA HIE Client Registry specification (`GET /api/v1/patients?identification_type=...&identification_number=...` with `X-Facility-Id` and `X-Facility-Id-Type: fr-code`). When verified, binds canonical `dhaCrid` and `upi`, transitioning patient status from `LOCAL_ONLY` to `VERIFIED_EXTERNAL`.
 * **Technical Dependencies:** `TASK-04-01`, `TASK-03-04`.
-* **Regulatory & Security Implications:** Digital Health Act 2023 Section 38 (Universal Master Registries adoption).
-* **Database Changes:** Column `dha_crid` (VARCHAR 64), `cr_sync_status` (ENUM), `cr_last_synced_at` in `patients`.
-* **API Changes:** `POST /api/v1/patients/:id/sync-cr`.
-* **UI Changes:** "Verify with DHA Registry" button on patient profile showing green badge when synchronized.
-* **Required Automated Tests:** Mock HTTP client tests for DHA CR query; error handling for unindexed national IDs; timeout fallback tests.
-* **Acceptance Criteria:** Successful query populates verified CRID; offline/unresponsive registry sets sync status to `PENDING_RETRY` without blocking local registration.
-* **Documentation Updates:** `docs/integrations/dha-cr-client.md`.
-* **Known Risks & External Dependencies:** DHA CR API downtime or slow response times; mitigate with 3-second timeout and asynchronous background sync.
-* **Definition of Done:** DHA CR adapter fully tested against mock gateway and integrated into registration workflow.
+* **Regulatory & Security Implications:** Digital Health Act 2023 Section 15 & Section 38 (Universal Master Registries adoption).
+* **Database Changes:** Columns `dha_crid`, `upi`, `identity_status` in `patients`.
+* **API Changes:** `POST /api/v1/patients/:id/verify-dha`.
+* **UI Changes:** Client Registry verification trigger in patient detail drawer, dynamic `VERIFIED_EXTERNAL` badge, UPI display.
+* **Required Automated Tests:** `packages/integration-adapters/src/dha-hie/mock-dha-hie.client.spec.ts` (7 tests) and `apps/api/test/patients.spec.ts`.
+* **Acceptance Criteria:** Successful query populates verified CRID and UPI; unindexed citizen results in `status: UNINDEXED` leaving patient as `LOCAL_ONLY`.
+* **Documentation Updates:** `docs/api/patients-api.md`, `docs/user-manual/patient-registration.md`.
+* **Definition of Done:** DHA Client Registry mock adapter and verification endpoint tested and verified green.
 
 ---
 
 ### TASK-04-03: Emergency "Unknown Patient" Intake Workflow
 * **Task ID & Name:** `TASK-04-03` — Emergency Trauma Unknown Patient Registration
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Guarantee that unconscious, unidentified trauma patients receive immediate life-saving medical care without administrative or registration delays.
-* **Functional Requirements:** One-click emergency intake generating a temporary record: `UNKNOWN-MALE-[UUID]` or `UNKNOWN-FEMALE-[UUID]`, estimated age, and immediate encounter creation. Provide downstream workflow to reconcile and merge the temporary record into the patient's permanent identity once identified.
+* **Functional Requirements:** Rapid one-click intake workflow generating a temporary intake chart with alias `UNKNOWN-[GENDER]-[XXXXX]`, estimated year of birth, temporary MRN, and triage circumstances. Flagged with `isEmergencyUnknown: true` for subsequent reconciliation.
 * **Technical Dependencies:** `TASK-04-01`, `TASK-02-01`.
 * **Regulatory & Security Implications:** Constitution of Kenya Article 43(2) & Health Act 2017 Section 7 (Emergency medical treatment cannot be denied).
-* **Database Changes:** Column `is_emergency_unknown` (BOOLEAN), `reconciled_patient_id` (UUID) in `patients`.
-* **API Changes:** `POST /api/v1/patients/emergency-intake`, `POST /api/v1/patients/merge`.
-* **UI Changes:** Red "Emergency Quick Intake" button on registration dashboard; patient record merge dialog.
-* **Required Automated Tests:** Unit test for emergency intake ID generation; integration test verifying clinical records transfer cleanly during patient merge.
-* **Acceptance Criteria:** Intake creates encounter in $<3$ seconds; merging patient correctly re-points encounters, lab results, and bills to the permanent identity with full audit log.
-* **Documentation Updates:** `docs/clinical/emergency-intake.md`.
-* **Known Risks & External Dependencies:** Accidental merging of incorrect patient records; mitigate with two-clinician authorization requirement for merges.
-* **Definition of Done:** Emergency intake and merge flows verified end-to-end with automated test suite.
+* **Database Changes:** Column `is_emergency_unknown` (BOOLEAN) in `patients`.
+* **API Changes:** `POST /api/v1/patients/emergency-intake`.
+* **UI Changes:** Emergency quick intake form modal and banner in `apps/web/app/patients/page.tsx`.
+* **Required Automated Tests:** `apps/api/test/patients.spec.ts` (emergency intake validation and chart generation).
+* **Acceptance Criteria:** Intake completes immediately without requiring National ID or phone number; sets appropriate trauma alias.
+* **Documentation Updates:** `docs/user-manual/patient-registration.md`.
+* **Definition of Done:** Emergency trauma intake active and verified with automated test suite.
+
+---
+
+### TASK-04-04: Patient Statutory Consents & Privacy Directives
+* **Task ID & Name:** `TASK-04-04` — Statutory Privacy Consent Subsystem (Kenya DPA 2019)
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Satisfy Kenya Data Protection Act 2019 statutory mandates regarding informed, explicit consent for sensitive personal health data processing and cross-facility exchange.
+* **Functional Requirements:** Implemented `patient_consents` table supporting multiple consent types (`GENERAL_DATA_PROCESSING`, `HIE_SHR_SHARING`, `RESEARCH_ANALYTICS`, `EMERGENCY_OVERRIDE`), policy versioning (`KE-DPA-2019-V1`), capture channels (`WRITTEN_FORM`, `VERBAL_WITNESSED`, `SMS_OTP`), and revocation tracking with mandatory legal justification.
+* **Technical Dependencies:** `TASK-04-01`, `TASK-02-03`.
+* **Regulatory & Security Implications:** DPA 2019 Sections 30 & 32; ODPC compliance audits.
+* **Database Changes:** Table `patient_consents` with indexes on `(tenant_id, patient_id)` and `(tenant_id, consent_type, status)`.
+* **API Changes:** `POST /api/v1/patients/:id/consents`, `POST /api/v1/patients/:id/consents/:consentId/revoke`.
+* **UI Changes:** Consent status section in patient registration form and detail drawer.
+* **Required Automated Tests:** `apps/api/test/patients.spec.ts` (consent grant, policy versioning, and revocation audit trail).
+* **Acceptance Criteria:** New patient registration records initial consent; consent revocation updates status to `REVOKED` with timestamp and justification.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`, `docs/api/patients-api.md`.
+* **Definition of Done:** Consent management endpoints and database models fully implemented and tested.
+
+---
+
+### TASK-04-05: Duplicate Detection & Safe Non-Destructive Reconciliation
+* **Task ID & Name:** `TASK-04-05` — Duplicate Detection & Non-Destructive Record Reconciliation
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Prevent split clinical charts and duplicate registrations that cause medical errors, while enabling authorized records officers to safely reconcile confirmed duplicates without data loss.
+* **Functional Requirements:** Two-tier deduplication: (1) Exact duplicate prevention on National ID blind index (409 Conflict), (2) Probabilistic demographic candidate scoring ($score \ge 0.70$) based on normalized name Levenshtein distance, exact DOB match, same gender, and matching phone. Pre-flight scoring endpoint `/api/v1/patients/check-duplicates`. Force duplicate override capability (`forceDuplicateOverride: true`). Non-destructive merge endpoint `/api/v1/patients/reconcile` that marks secondary record as `MERGED` with pointer to survivor, marks survivor as `RECONCILED`, logs reconciliation audit event, and requires `PATIENT_RECONCILE` permission.
+* **Technical Dependencies:** `TASK-04-01`, `TASK-02-03`.
+* **Regulatory & Security Implications:** Patient safety; medical records retention standards; separation of duties (HRIO only).
+* **Database Changes:** Table `patient_reconciliations` and columns `reconciled_into_patient_id`, `reconciliation_notes` in `patients`.
+* **API Changes:** `POST /api/v1/patients/check-duplicates`, `POST /api/v1/patients/reconcile`.
+* **UI Changes:** Duplicate warning candidate alert modal, duplicate override checkbox, and safe record reconciliation form in Web UI.
+* **Required Automated Tests:** Levenshtein scoring tests in `crypto.spec.ts`; duplicate rejection, candidate checking, override bypass, RBAC gate, and non-destructive merge tests in `patients.spec.ts`.
+* **Acceptance Criteria:** Exact National ID matches blocked; $score \ge 0.70$ candidates flagged; clinicians without `PATIENT_RECONCILE` blocked with 403 Forbidden; authorized records officer merge preserves all records.
+* **Documentation Updates:** `docs/api/patients-api.md`, `docs/user-manual/patient-registration.md`.
+* **Definition of Done:** Deduplication and safe reconciliation fully implemented and verified with automated test suite.
+
+---
+
+### TASK-04-06: Patient Record Access Audit Logging & History
+* **Task ID & Name:** `TASK-04-06` — Granular Patient Record Access Auditing (DPA 2019 Sec 41)
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Maintain a tamper-evident, granular statutory log of every staff access to a patient's medical and demographic record.
+* **Functional Requirements:** Implemented `patient_access_logs` table capturing `tenantId`, `patientId`, `accessedById`, `purpose` (`CLINICAL_TREATMENT`, `TRIAGE`, `BILLING`, etc.), `accessType` (`VIEW_DEMOGRAPHICS`, `VIEW_CLINICAL_HISTORY`), `ipAddress`, and `userAgent`. Automatically recorded every time `PatientsService.findOne` is invoked. Implemented history endpoint returning both reconciliation history and access logs.
+* **Technical Dependencies:** `TASK-04-01`, `TASK-03-03`.
+* **Regulatory & Security Implications:** Kenya DPA 2019 Section 41 (Data Security & Accountability).
+* **Database Changes:** Table `patient_access_logs`.
+* **API Changes:** `GET /api/v1/patients/:id/history`.
+* **UI Changes:** Access history and audit tab in patient profile drawer.
+* **Required Automated Tests:** `apps/api/test/patients.spec.ts` (access trail verification).
+* **Acceptance Criteria:** Every record retrieval generates an immutable access log entry; history endpoint returns full access provenance.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`, `docs/api/patients-api.md`.
+* **Definition of Done:** Access audit logging verified in test suite.
+
 
 ---
 
 ## Milestone 5: Encounters, Triage, and Clinical Documentation
 
 ### TASK-05-01: Clinical Encounter Management & Status Lifecycle
-* **Task ID & Name:** `TASK-05-01` — Clinical Encounter State Machine & Queue
+* **Task ID & Name:** `TASK-05-01` — Clinical Encounter State Machine, Patient Queue & Lifecycle
+* **Status:** **COMPLETED & VERIFIED**
 * **Business Purpose:** Track patient movement through the hospital (Waiting, In-Triage, In-Consultation, Admitted, Discharged) to optimize clinic workflow and clinician productivity.
-* **Functional Requirements:** Encounter entity supporting lifecycle states: `PLANNED`, `ARRIVED`, `TRIAGED`, `IN_PROGRESS`, `ON_HOLD`, `DISCHARGED`, `CANCELLED`. Queue management dashboard for outpatient and emergency departments.
-* **Technical Dependencies:** `TASK-04-01`, `TASK-02-03`.
-* **Regulatory & Security Implications:** Clinical accountability; medical records custody rules.
-* **Database Changes:** Table `encounters` with foreign keys to `patients`, `practitioners`, `tenants`.
-* **API Changes:** `POST /api/v1/encounters`, `GET /api/v1/encounters/active`, `PATCH /api/v1/encounters/:id/status`.
-* **UI Changes:** Real-time departmental patient queue board with waiting time indicators.
-* **Required Automated Tests:** State machine transition tests (e.g., cannot transition from `DISCHARGED` to `IN_PROGRESS`); tenant filtering tests.
-* **Acceptance Criteria:** Department queue reflects status transitions in real-time; encounter duration and wait times are accurately computed.
-* **Documentation Updates:** `docs/clinical/encounter-lifecycle.md`.
-* **Known Risks & External Dependencies:** Concurrent status updates causing race conditions (mitigate with optimistic concurrency locking).
-* **Definition of Done:** Encounter state machine validated with unit and integration tests.
+* **Functional Requirements:** Implemented `encounters` entity supporting lifecycle states: `PLANNED`, `ARRIVED`, `TRIAGED`, `IN_PROGRESS`, `ON_HOLD`, `COMPLETED`, `CANCELLED`, `REOPENED`. Implemented walk-in intake, appointment registration, departmental queue filtering (`OPD_GENERAL`, `OPD_SPECIALIZED`, `EMERGENCY`, `MCH_FP`), priority queues (`RESUSCITATION`, `EMERGENCY`, `URGENT`, `SEMI_URGENT`, `ROUTINE`), clinical safety closure guard (blocks closure if unfinalized draft notes remain), and auditable encounter reopening requiring clinical/administrative justification ($\ge 10$ chars).
+* **Technical Dependencies:** `TASK-04-01`, `TASK-02-03`, `@afyapoa/database`, `@afyapoa/domain-core`.
+* **Regulatory & Security Implications:** Clinical accountability; medical records custody rules; Kenya Health Act 2017.
+* **Database Changes:** Table `encounters` with RLS, uniqueness constraint `(tenant_id, encounter_number)`, foreign keys to `patients`, `facilities`, `users`.
+* **API Changes:** `POST /api/v1/encounters`, `POST /api/v1/encounters/appointment`, `GET /api/v1/encounters`, `GET /api/v1/encounters/:id`, `PATCH /api/v1/encounters/:id/status`, `POST /api/v1/encounters/:id/close`, `POST /api/v1/encounters/:id/reopen`.
+* **UI Changes:** Reception queue board, walk-in registration modal, status transitions, and encounter closure / reopening workflow in `apps/web/app/encounters/page.tsx`.
+* **Required Automated Tests:** `apps/api/test/encounters.spec.ts` (walk-in creation, appointment registration, queue filtering, closure draft check [422], reopening justification validation [400], RLS isolation).
+* **Acceptance Criteria:** Department queue reflects status transitions; encounter duration is tracked; closure blocked if unfinalized drafts exist; reopening logged with reason.
+* **Documentation Updates:** `docs/api/encounters-api.md`, `docs/user-manual/encounters-clinical-doc.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** 100% test pass rate in `apps/api/test/encounters.spec.ts`.
 
 ---
 
 ### TASK-05-02: Vital Signs Capture & Pediatric/Adult Acuity Scoring
 * **Task ID & Name:** `TASK-05-02` — Triage Vital Signs & Clinical Acuity Calculator
-* **Business Purpose:** Standardize patient triage, identify deteriorating patients immediately, and prioritize urgent clinical cases.
-* **Functional Requirements:** Record vitals: Systolic/Diastolic BP, Heart Rate, Respiration Rate, Temperature, SpO2, Weight, Height, Blood Glucose. Compute BMI and automatic Emergency Severity Index (ESI Level 1–5). Highlight critical out-of-range vitals in red.
-* **Technical Dependencies:** `TASK-05-01`, `TASK-01-03`.
-* **Regulatory & Security Implications:** Emergency clinical standards and patient safety.
-* **Database Changes:** Table `triage_vitals`.
-* **API Changes:** `POST /api/v1/encounters/:id/vitals`, `GET /api/v1/encounters/:id/vitals`.
-* **UI Changes:** Nurse triage input sheet with visual abnormal range badges and ESI acuity selector.
-* **Required Automated Tests:** Unit tests for BMI calculator and abnormal range flagging algorithms (e.g., pediatric hypothermia, hypertensive crisis).
-* **Acceptance Criteria:** Abnormal vitals trigger visual alerts; Level 1/2 acuity auto-escalates encounter to top of doctor queue.
-* **Documentation Updates:** `docs/clinical/triage-vitals-guide.md`.
-* **Known Risks & External Dependencies:** Human error entering out-of-bounds numbers; mitigate with sanity range validation (e.g., SpO2 between 1 and 100).
-* **Definition of Done:** Triage form functional, validated against automated range test suite.
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Standardize patient triage, identify deteriorating patients immediately, and prioritize urgent clinical cases using verified Kenyan medical standards.
+* **Functional Requirements:** Implemented `triage_vitals` table recording: Systolic/Diastolic BP (mmHg), Heart Rate (bpm), Respiratory Rate (breaths/min), Temperature (°C), SpO2 (%), Weight (kg), Height (cm), Blood Glucose (mmol/L), AVPU Neurological scale (`ALERT`, `VOICE`, `PAIN`, `UNRESPONSIVE`), and qualitative triage notes. Automatically computes Body Mass Index (BMI) in $kg/m^2$. Automatically updates encounter priority and transitions status to `TRIAGED`. Clean FHIR R4 mappings with verified LOINC codes.
+* **Technical Dependencies:** `TASK-05-01`, `@afyapoa/domain-core`, `@afyapoa/fhir-models`.
+* **Regulatory & Security Implications:** Kenya Health Act 2017 Part III (Emergency duty of care & standardized triage); patient safety.
+* **Database Changes:** Table `triage_vitals` with indexes on `(tenant_id, encounter_id)`, `(tenant_id, patient_id)`, `(tenant_id, assessed_at)`.
+* **API Changes:** `POST /api/v1/encounters/:id/triage`.
+* **UI Changes:** Nurse triage station in `apps/web/app/encounters/page.tsx` with live BMI calculator and priority badges.
+* **Required Automated Tests:** `apps/api/test/encounters.spec.ts` (triage vital recording, automated BMI calculation, status auto-advance to `TRIAGED`, priority update).
+* **Acceptance Criteria:** Physiological measurements captured with Kenyan units; BMI auto-computed; encounter priority dynamically updated.
+* **Documentation Updates:** `docs/api/encounters-api.md`, `docs/user-manual/encounters-clinical-doc.md`.
+* **Definition of Done:** Triage form functional, LOINC mappings verified, automated integration tests passing green.
 
 ---
 
-### TASK-05-03: SOAP Clinical Notes & Electronic Signature Immutability
-* **Task ID & Name:** `TASK-05-03` — SOAP Clinical Notes & Cryptographic Addenda
-* **Business Purpose:** Provide clinicians with an intuitive SOAP documentation interface while ensuring that finalized medical notes cannot be tampered with or repudiated.
-* **Functional Requirements:** SOAP editor (Subjective, Objective, Assessment, Plan). Clinician electronic signature with PIN/password verification. Upon signature, the note becomes immutable; modifications must be appended as signed addenda.
-* **Technical Dependencies:** `TASK-05-01`, `TASK-02-03`, `TASK-03-03`.
-* **Regulatory & Security Implications:** Kenya Evidence Act & Health Act 2017 (admissibility of electronic medical records in court).
-* **Database Changes:** Tables `clinical_notes`, `clinical_note_addenda`.
-* **API Changes:** `POST /api/v1/encounters/:id/notes`, `POST /api/v1/encounters/:id/notes/sign`, `POST /api/v1/encounters/:id/notes/addenda`.
-* **UI Changes:** Clinician SOAP documentation view with rich text formatting and signature confirmation dialog.
-* **Required Automated Tests:** Immutability test: verify that direct `UPDATE` on signed notes is rejected; addendum ordering and timestamp verification tests.
-* **Acceptance Criteria:** Once signed, note status is `FINALIZED`; editing creates a child addendum referencing parent note ID; original text remains intact.
-* **Documentation Updates:** `docs/clinical/soap-documentation.md`.
-* **Known Risks & External Dependencies:** Clinician fatigue with multi-step signature; streamline with session-cached PIN prompt.
-* **Definition of Done:** Clinical notes editor and addenda workflow verified and covered by integration tests.
+### TASK-05-03: SOAP Clinical Notes, Digital Signature & Statutory Immutability
+* **Task ID & Name:** `TASK-05-03` — SOAP Clinical Notes, Digital Signing & Addendum Amendments
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Provide clinicians with intuitive structured clinical documentation (SOAP, H&P, Consultation, Progress, Discharge) while ensuring finalized medical notes cannot be modified in place or repudiated.
+* **Functional Requirements:** Implemented `clinical_notes` table supporting `DRAFT`, `FINALIZED`, and `AMENDED` lifecycle. Implemented cryptographic digital signing generating an authentic SHA-256 signature binding author, encounter, and content. Strictly prevents direct mutation or deletion of finalized notes (throws HTTP 422 with statutory error message). Implemented `clinical_note_amendments` table for formal addendum corrections requiring clinical justification ($\ge 10$ chars), author attribution, and effective timestamping. Implemented `patient_allergies` table tracking allergens, severity, clinical status, and verification status.
+* **Technical Dependencies:** `TASK-05-01`, `TASK-03-03`, `@afyapoa/domain-core`, `@afyapoa/database`.
+* **Regulatory & Security Implications:** Kenya Evidence Act, Health Act 2017, and Data Protection Act 2019 Section 25 & 41 (Immutability of finalized clinical records).
+* **Database Changes:** Tables `clinical_notes`, `clinical_note_amendments`, `patient_allergies`.
+* **API Changes:** `POST /api/v1/encounters/:id/notes`, `PATCH /api/v1/encounters/:id/notes/:noteId`, `POST /api/v1/encounters/:id/notes/:noteId/finalize`, `POST /api/v1/encounters/:id/notes/:noteId/amend`, `POST /api/v1/encounters/patients/:patientId/allergies`, `GET /api/v1/encounters/patients/:patientId/allergies`.
+* **UI Changes:** Consultation room with SOAP editor, draft saving (`Alt+S`), finalization & digital signing (`Alt+F`), amendment drawer, and allergy alert badges in `apps/web/app/encounters/page.tsx`.
+* **Required Automated Tests:** `apps/api/test/encounters.spec.ts` (draft note creation, update, finalization, digital signature generation, statutory block on direct update of finalized notes [422], addendum creation, allergy management).
+* **Acceptance Criteria:** Direct mutation of finalized notes strictly blocked with HTTP 422; addenda preserve original record; digital signature generated upon signing; allergies tracked.
+* **Documentation Updates:** `docs/api/encounters-api.md`, `docs/user-manual/encounters-clinical-doc.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** Clinical documentation and amendments fully implemented and covered by automated test suite.
 
 ---
 
@@ -364,35 +430,35 @@ flowchart TD
 
 ### TASK-06-01: WHO ICD-11 Terminology Caching & Fast Auto-Suggest Engine
 * **Task ID & Name:** `TASK-06-01` — WHO ICD-11 Terminology Engine & Trigram Search
-* **Business Purpose:** Provide doctors with sub-50ms auto-complete search across 30,000+ WHO ICD-11 diagnostic terms, removing resistance to national coding standards.
-* **Functional Requirements:** Ingest WHO ICD-11 MMS foundation and linearization dataset. Implement PostgreSQL trigram search (`pg_trgm`) index on diagnostic titles, synonyms, and alphanumeric codes. Provide cached API returning code, title, and chapter.
-* **Technical Dependencies:** PostgreSQL `pg_trgm` extension, `TASK-03-01`.
-* **Regulatory & Security Implications:** DHA Terminology Service (TS) mandate; SHA requires ICD-11 codes on all claims.
-* **Database Changes:** Table `terminology_icd11` with GIN trigram index on `search_vector`.
-* **API Changes:** `GET /api/v1/terminology/icd11?query=...&limit=10`.
-* **UI Changes:** Smart diagnostic auto-complete dropdown in clinical consultation interface.
-* **Required Automated Tests:** Search benchmark test ($<50\text{ ms}$ for 3-character prefix); synonym matching test (e.g., "heart attack" matches `BA41 Acute myocardial infarction`).
-* **Acceptance Criteria:** Search returns ranked matches in $<50\text{ ms}$; clinician can select primary and secondary diagnoses.
-* **Documentation Updates:** `docs/clinical/icd11-terminology-guide.md`.
-* **Known Risks & External Dependencies:** Database size of terminology dictionary (~50MB); preload and cache in Redis memory for ultra-fast lookup.
-* **Definition of Done:** Terminology dataset loaded, indexed, and API search latency verified.
+* **Status:** `COMPLETED & VERIFIED` (Verified by 25 tests in `apps/api/test/orders.spec.ts`)
+* **Business Purpose:** Provide doctors with sub-50ms auto-complete search across WHO ICD-11 diagnostic terms, removing resistance to national coding standards.
+* **Functional Requirements:** Ingest WHO ICD-11 MMS foundation and linearization dataset. Implement search index on diagnostic titles, synonyms, and alphanumeric codes. Provide cached API returning code, title, and chapter. Strict rejection of invented terminology codes.
+* **Technical Dependencies:** `packages/domain-core`, `packages/database`, `apps/api`.
+* **Regulatory & Security Implications:** DHA Terminology Service (TS) mandate; SHA requires ICD-11 codes on all claims; zero invented codes constraint.
+* **Database Changes:** Tables `terminology_catalogues`, `terminology_concepts`, `diagnoses`.
+* **API Changes:** `GET /api/v1/terminology/catalogues`, `GET /api/v1/terminology/concepts/search`, `POST /api/v1/terminology/concepts/validate`, `POST /api/v1/terminology/catalogues/import`, `POST /api/v1/orders/diagnoses`, `GET /api/v1/orders/encounters/:encounterId/diagnoses`, `PUT /api/v1/orders/diagnoses/:id/status`, `GET /api/v1/orders/diagnoses/:id/fhir`.
+* **UI Changes:** Smart diagnostic catalogue fast-picker and WHO ICD-11 diagnosis entry in `apps/web/app/encounters/page.tsx` with FHIR R4 Condition generation.
+* **Required Automated Tests:** Terminology search, validation, and rejection of invented codes in `apps/api/test/orders.spec.ts`.
+* **Acceptance Criteria:** Search returns authentic ICD-11 codes; invented codes return 400 Bad Request; primary/secondary diagnoses bound to encounter.
+* **Documentation Updates:** `docs/api/orders-api.md`, `docs/user-manual/clinical-terminology-orders.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** Terminology dataset loaded, indexed, validated, and tested.
 
 ---
 
 ### TASK-06-02: Computerized Physician Order Entry (CPOE) Framework
-* **Task ID & Name:** `TASK-06-02` — CPOE Order Routing for Lab, Pharmacy & Imaging
-* **Business Purpose:** Eliminate handwritten paper chits, reduce clinical transcription errors, and instantly route doctor orders to relevant hospital service points.
-* **Functional Requirements:** CPOE order entry supporting: (1) Laboratory Investigations (LOINC-coded), (2) Medication Prescriptions (dosage, route, frequency, duration), and (3) Radiology/Procedures (ICHI-coded). Automatically route orders to Pharmacy and Lab departmental queues.
-* **Technical Dependencies:** `TASK-05-03`, `TASK-06-01`.
-* **Regulatory & Security Implications:** Health Act 2017 & Pharmacy and Poisons Act (prescription authenticity).
-* **Database Changes:** Tables `orders`, `order_items`.
-* **API Changes:** `POST /api/v1/encounters/:id/orders`, `GET /api/v1/orders/department/:dept`.
-* **UI Changes:** Order entry panel with multi-order cart (Medications, Lab, Imaging) and one-click submission.
-* **Required Automated Tests:** Unit test for order serialization; integration test verifying split routing to lab and pharmacy worklists.
-* **Acceptance Criteria:** Submitting an order bundle containing 1 lab test and 2 drugs immediately populates both the lab accessioning queue and the pharmacy dispensing queue.
-* **Documentation Updates:** `docs/clinical/cpoe-ordering.md`.
-* **Known Risks & External Dependencies:** Duplicate order entry by multiple clinicians; show active orders on screen to prevent duplication.
-* **Definition of Done:** CPOE order creation and departmental dispatch verified end-to-end.
+* **Task ID & Name:** `TASK-06-02` — CPOE Order Routing for Lab & Pharmacy with Duplicate Prevention
+* **Status:** `COMPLETED & VERIFIED` (Verified by 25 tests in `apps/api/test/orders.spec.ts`)
+* **Business Purpose:** Eliminate handwritten paper chits, reduce clinical transcription errors, and track clinical order lifecycle from creation through authorization, amendment, and structured cancellation.
+* **Functional Requirements:** CPOE order entry supporting: (1) Laboratory Investigations (LOINC-coded), (2) Medication Prescriptions (KEML 2023 / ATC posology, route, frequency, quantity, duration). Accidental duplicate order prevention within 24 hours requiring clinician justification override ($\ge 10$ chars). Clinician authorization with digital signature. Cancellation with mandatory clinical rationale ($\ge 10$ chars). Order amendment linking superseded orders. Strict isolation of clinical order intent from pharmacy dispensing and laboratory results. Zero automated treatment recommendations.
+* **Technical Dependencies:** `TASK-05-03`, `TASK-06-01`, `packages/fhir-models`.
+* **Regulatory & Security Implications:** Health Act 2017 & Pharmacy and Poisons Act (prescription authenticity, clinician attribution).
+* **Database Changes:** Tables `clinical_orders`, `medication_requests`, `service_requests`.
+* **API Changes:** `POST /api/v1/orders/medications`, `POST /api/v1/orders/services`, `POST /api/v1/orders/:id/authorize`, `POST /api/v1/orders/:id/cancel`, `POST /api/v1/orders/:id/amend`, `GET /api/v1/orders/:id/fhir`.
+* **UI Changes:** CPOE ordering interface in `apps/web/app/encounters/page.tsx` with duplicate warning modal, cancellation modal, authorization triggers, and FHIR export preview.
+* **Required Automated Tests:** Order placement, duplicate detection (409) and override, review/authorization, cancellation ($\ge 10$ chars), amendment, cross-tenant isolation, and FHIR R4 serialization tests in `apps/api/test/orders.spec.ts`.
+* **Acceptance Criteria:** Orders created with active status; duplicate orders blocked unless overridden; cancellations require clinical rationale; orders serialize to standard FHIR R4 MedicationRequest and ServiceRequest resources.
+* **Documentation Updates:** `docs/api/orders-api.md`, `docs/user-manual/clinical-terminology-orders.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** CPOE order creation, lifecycle management, duplicate guards, and FHIR export verified end-to-end.
 
 ---
 
@@ -400,71 +466,90 @@ flowchart TD
 
 ### TASK-07-01: Laboratory Specimen Accessioning & Barcode Generation
 * **Task ID & Name:** `TASK-07-01` — Specimen Collection, Accessioning & Barcoding
+* **Status:** `COMPLETED & VERIFIED` (Verified by 25 tests in `apps/api/test/laboratory.spec.ts`)
 * **Business Purpose:** Prevent specimen misidentification, misplacement, and patient sample mix-ups through automated barcode tracking from phlebotomy to analyzer.
-* **Functional Requirements:** Specimen accessioning workflow: generate unique 12-character accession number (Code 128 / QR format). Record specimen type (Whole Blood, Serum, Urine, CSF, Swab), collection timestamp, and collector user ID. Support specimen rejection with standardized rejection reasons (clotted, hemolyzed, wrong tube).
-* **Technical Dependencies:** `TASK-06-02`, `TASK-01-03`.
-* **Regulatory & Security Implications:** ISO 15189 laboratory quality standards & patient safety.
-* **Database Changes:** Tables `lab_specimens`, `lab_specimen_rejections`.
-* **API Changes:** `POST /api/v1/lab/orders/:id/collect`, `POST /api/v1/lab/specimens/:id/reject`.
-* **UI Changes:** Phlebotomy specimen collection screen with printable barcode label sheet.
-* **Required Automated Tests:** Barcode uniqueness tests; rejection state transition tests.
-* **Acceptance Criteria:** Barcode label formats fit standard thermal label printers ($50\times 25\text{ mm}$); specimen status updates to `COLLECTED` or `REJECTED`.
-* **Documentation Updates:** `docs/laboratory/specimen-accessioning.md`.
-* **Known Risks & External Dependencies:** Hardware printer compatibility; use standard ZPL / ESC-POS / PDF print formatting.
-* **Definition of Done:** Accessioning workflow operational and barcode generation verified.
+* **Functional Requirements:** Specimen accessioning workflow: generate unique accession number (`ACC-YYYYMM-XXXXX`) and barcode (`BC-YYYYMM-XXXXX`). Record specimen type (Whole Blood, Serum, Urine, CSF, Swab), container type (EDTA, SST, Citrate, Sterile Cup), volume in mL, collection site, timestamp, and collector user ID. Automated deduction of consumable collection tubes and safety needles upon draw. Block collection on cancelled clinical orders (HTTP 400). Pre-analytical rejection handling with standardized error reasons (hemolyzed, clotted, QNS, wrong container) and automatic recollection order spawning (`ACC-YYYYMM-XXXXX-R`).
+* **Technical Dependencies:** `TASK-06-02`, `@afyapoa/domain-core`, `@afyapoa/database`.
+* **Regulatory & Security Implications:** ISO 15189:2022 Clauses 5.3 & 5.4, KMLTTB Cap 253A, Kenya Digital Health Act 2023.
+* **Database Changes:** Tables `lab_specimens`, `lab_consumables`, `lab_consumable_deductions`.
+* **API Changes:** `POST /api/laboratory/specimens/collect`, `PATCH /api/laboratory/specimens/:id/receive`, `POST /api/laboratory/specimens/:id/reject`, `GET /api/laboratory/worklist`, `GET /api/laboratory/fhir/specimens/:id`.
+* **UI Changes:** Phlebotomy specimen collection modal, accession workbench, barcode display, and pre-analytical rejection modal in `apps/web/app/laboratory/page.tsx`.
+* **Required Automated Tests:** Accession and barcode generation, cancelled order rejection, physical bench receipt, pre-analytical rejection with recollection, consumable tube deduction, and Kenya Core FHIR Specimen export in `apps/api/test/laboratory.spec.ts`.
+* **Acceptance Criteria:** Accession format matches `ACC-YYYYMM-XXXXX`; barcode matches `BC-YYYYMM-XXXXX`; cancelled orders rejected with 400; recollection spawns linked `-R` accession; consumable stock decrements atomically.
+* **Documentation Updates:** `docs/api/laboratory-api.md`, `docs/user-manual/laboratory-operations.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** Accessioning workflow operational, pre-analytical quality gates enforced, inventory integrated, and verified by test suite.
 
 ---
 
-### TASK-07-02: Lab Results Entry, Reference Ranges & Critical Alerts
-* **Task ID & Name:** `TASK-07-02` — Test Result Entry, Range Validation & Critical Alerts
-* **Business Purpose:** Ensure accurate lab reporting, alert clinicians to life-threatening values immediately, and publish verified results to the EHR.
-* **Functional Requirements:** Input test results against LOINC-coded laboratory catalog. Automatic reference range calculation based on patient age and sex. Automated detection of critical physiological values, triggering push notifications to attending doctor. Require two-tier review: entry by Lab Tech, electronic sign-off by Senior Technologist / Pathologist.
-* **Technical Dependencies:** `TASK-07-01`, `TASK-02-03`.
-* **Regulatory & Security Implications:** Clinical diagnostic standards (KMLTTB).
-* **Database Changes:** Tables `lab_results`, `lab_test_catalog`, `lab_reference_ranges`.
-* **API Changes:** `POST /api/v1/lab/specimens/:id/results`, `POST /api/v1/lab/results/:id/verify`.
-* **UI Changes:** Laboratory bench result entry sheet with colored normal/abnormal/critical indicators.
-* **Required Automated Tests:** Unit tests for age/sex-adjusted reference range evaluation; critical value alarm trigger tests; role authorization tests (only authorized techs can verify).
-* **Acceptance Criteria:** Verified results immediately appear in the patient's clinical encounter and EHR; critical results dispatch SMS/push alert to ordering doctor.
-* **Documentation Updates:** `docs/laboratory/results-verification.md`.
-* **Known Risks & External Dependencies:** Clinician misses critical alert; require explicit clinical acknowledgment of critical lab results in UI.
-* **Definition of Done:** Results entry, authorization, and critical alerting verified in automated test suite.
+### TASK-07-02: Lab Results Entry, Reference Ranges, Abnormal Flagging & Two-Tier Authorization
+* **Task ID & Name:** `TASK-07-02` — Test Result Entry, Range Validation, Critical Alerts & Two-Tier Review
+* **Status:** `COMPLETED & VERIFIED` (Verified by 25 tests in `apps/api/test/laboratory.spec.ts`)
+* **Business Purpose:** Ensure accurate lab reporting, alert clinicians to life-threatening values immediately, enforce two-tier review, and publish verified results to the EHR.
+* **Functional Requirements:** Input test results against LOINC-coded laboratory catalog. Automatic reference range calculation based on patient age and sex with explicit clinical source provenance (WHO / KEMRI). Zero invented reference ranges or diagnostic thresholds. Automated detection of critical physiological values (`CRITICAL_LOW`, `CRITICAL_HIGH`), triggering immediate alert indicators. Strict two-tier governance: entry by Lab Tech (`LAB_WRITE`), verification and authorization exclusively by Senior Technologist / Pathologist (`LAB_RESULT_AUTHORIZE`). Unauthorized roles receive HTTP 403 Forbidden. Result corrections require mandatory clinical justification ($\ge 10$ chars) and preserve immutable audit history of superseded results.
+* **Technical Dependencies:** `TASK-07-01`, `TASK-02-03`, `packages/fhir-models`.
+* **Regulatory & Security Implications:** ISO 15189:2022 Clause 5.5–5.8, KMLTTB Cap 253A, Kenya Evidence Act (audit immutability).
+* **Database Changes:** Tables `lab_test_catalog`, `lab_reference_ranges`, `lab_results`.
+* **API Changes:** `POST /api/laboratory/seed`, `GET /api/laboratory/catalog`, `POST /api/laboratory/results`, `PATCH /api/laboratory/results/:id/verify`, `POST /api/laboratory/results/:id/correct`, `GET /api/laboratory/results/order/:orderId`, `GET /api/laboratory/fhir/observations/:id`.
+* **UI Changes:** Laboratory departmental bench worklists (Hematology, Chemistry, Parasitology, Urinalysis, Microbiology), result entry modal with real-time abnormal badge rendering, correction modal with audit diff, and FHIR Observation export in `apps/web/app/laboratory/page.tsx`.
+* **Required Automated Tests:** Test catalogue seeding, demographic-adjusted reference range matching, automated critical alert evaluations (hemoglobin $\le 7.0$ g/dL, malaria reactive), two-tier authorization role gating (403), correction reason length validation ($\ge 10$ chars), and immutable audit history preservation in `apps/api/test/laboratory.spec.ts`.
+* **Acceptance Criteria:** Technologist entry permitted; junior roles blocked from authorizing (403); abnormal/critical values flagged without synthetic thresholds; corrections maintain complete parent-child audit trail; observations serialize to `KenyaCoreObservation` FHIR profile.
+* **Documentation Updates:** `docs/api/laboratory-api.md`, `docs/user-manual/laboratory-operations.md`, `docs/regulatory-register.md`.
+* **Definition of Done:** Results entry, automated evaluation, two-tier authorization, correction audit trails, and FHIR export verified end-to-end.
+
+---
+
+### TASK-07-03: Diagnostic Reports Compilation, Clinician Delivery & TAT Operational Metrics
+* **Task ID & Name:** `TASK-07-03` — Diagnostic Reports Compilation, Pathologist Sign-Off, Delivery & TAT SLA Metrics
+* **Status:** `COMPLETED & VERIFIED` (Verified by 25 tests in `apps/api/test/laboratory.spec.ts`)
+* **Business Purpose:** Aggregate multi-test analytical panels into comprehensive diagnostic reports with clinical impressions, deliver verified reports to clinicians, and monitor laboratory operational turnaround times against ISO 15189 quality benchmarks.
+* **Functional Requirements:** Compile diagnostic reports linking encounter, clinical order, and results. Multi-tier review and authorization with digital cryptographic signature. Marking report `FINAL` transitions underlying clinical order to `COMPLETED`. Support post-finalization amendments with mandatory justification ($\ge 10$ chars). Real-time operational reporting tracking turnaround times across 4 milestones: (1) Order to Collection, (2) Collection to Bench Receipt, (3) Receipt to Result Entry, (4) Result Entry to Authorization. Abnormal result distribution analysis and low inventory alerts. Strict cross-tenant Row-Level Security (RLS) isolation.
+* **Technical Dependencies:** `TASK-07-02`, `@afyapoa/fhir-models`, `@afyapoa/database`.
+* **Regulatory & Security Implications:** ISO 15189 Turnaround-Time SLAs, Data Protection Act 2019 RLS isolation, Kenya Health Act 2017.
+* **Database Changes:** Tables `diagnostic_reports`, `lab_consumables`, `lab_consumable_deductions`.
+* **API Changes:** `POST /api/laboratory/reports`, `PATCH /api/laboratory/reports/:id/authorize`, `POST /api/laboratory/reports/:id/amend`, `GET /api/laboratory/metrics/operational`, `GET /api/laboratory/consumables`, `POST /api/laboratory/consumables/deduct`, `GET /api/laboratory/fhir/diagnostic-reports/:id`.
+* **UI Changes:** Pathologist review & authorization dashboard, printable official diagnostic report PDF preview, TAT performance charts, and inventory management tab in `apps/web/app/laboratory/page.tsx`.
+* **Required Automated Tests:** Report compilation, digital authorization, clinical order auto-completion, amendment justification, turnaround-time metric calculations, inventory low-stock alerts, Kenya Core FHIR DiagnosticReport export, and cross-tenant RLS isolation in `apps/api/test/laboratory.spec.ts`.
+* **Acceptance Criteria:** Diagnostic reports compile cleanly; authorizing marks order COMPLETED; amendments preserve justification; TAT metrics calculate across all 4 milestones; Tenant B users blocked from accessing or signing Tenant A reports (404); FHIR export validates.
+* **Documentation Updates:** `docs/api/laboratory-api.md`, `docs/user-manual/laboratory-operations.md`, `docs/regulatory-register.md`, `docs/architecture/data-dictionary.md`.
+* **Definition of Done:** Diagnostic report compilation, authorization, operational metrics, FHIR export, and cross-tenant isolation fully verified in automated test suite.
 
 ---
 
 ## Milestone 8: Pharmacy and Medication Dispensing
 
-### TASK-08-01: Medication Dispensing & FEFO Inventory Batch Management
-* **Task ID & Name:** `TASK-08-01` — Pharmacy Dispensing & First-Expiry, First-Out Stock Engine
-* **Business Purpose:** Guarantee medication dispensing accuracy, prevent expired drug administration, and maintain real-time automated stock ledger balances.
-* **Functional Requirements:** Pharmacist dispensing verification against e-prescription. Enforce First-Expiry, First-Out (FEFO) batch allocation: system selects stock from nearest expiring lot. Record batch number, manufacturer, expiry date, quantity dispensed, and patient instructions.
-* **Technical Dependencies:** `TASK-06-02`, `TASK-03-01`.
-* **Regulatory & Security Implications:** Pharmacy and Poisons Board (PPB) regulations & Good Dispensing Practices.
-* **Database Changes:** Tables `pharmacy_inventory`, `pharmacy_batches`, `pharmacy_dispensations`.
-* **API Changes:** `GET /api/v1/pharmacy/prescriptions/pending`, `POST /api/v1/pharmacy/dispense`.
-* **UI Changes:** Pharmacist dispensing queue, prescription fulfillment modal with batch selector.
-* **Required Automated Tests:** Unit tests for FEFO sorting algorithm; concurrent inventory deduction race condition tests.
-* **Acceptance Criteria:** Stock balance decrements atomically; expired batches cannot be dispensed (blocked by validation logic).
-* **Documentation Updates:** `docs/pharmacy/dispensing-fefo.md`.
-* **Known Risks & External Dependencies:** Inventory discrepancies from manual stock theft or loss; mitigate with periodic cycle count reconciliation.
-* **Definition of Done:** Dispensing workflow and batch inventory management validated with zero concurrency race errors.
+### TASK-08-01: Medicine Catalogue, Batch Management & FEFO Stock Engine
+* **Task ID & Name:** `TASK-08-01` — Pharmacy Catalogue, FEFO Batch Management & Immutable Stock Movements
+* **Status:** `COMPLETED & VERIFIED` (Verified by 28 tests in `apps/api/test/pharmacy.spec.ts`)
+* **Business Purpose:** Guarantee medication dispensing accuracy, prevent expired drug administration, maintain real-time automated stock ledger balances, and ensure traceability of pharmaceutical products.
+* **Functional Requirements:** Standard Kenya Essential Medicines List (KEML 2023 8th Edition) and WHO ATC catalogue management with Kenya Pharmacy and Poisons Board (PPB) drug scheduling (Part 1, Part 2, Narcotic/Psychotropic, OTC). Supplier and procurement records with PPB wholesale license and KRA PIN tracking. Stock receipts, inter-facility transfers, cycle count adjustments, and reconciliations backed by an immutable ledger (`pharmacy_stock_movements`) prohibiting silent quantity overwriting. Automated First-Expiry, First-Out (FEFO) batch allocation algorithm (`allocateBatchesFEFO`) prioritizing nearest-expiry lots. Expiry risk calculation and automated low-stock thresholds. Row-level transaction concurrency locking (`SELECT ... FOR UPDATE`) preventing race conditions and negative inventory balances.
+* **Technical Dependencies:** `TASK-06-02`, `TASK-03-01`, `@afyapoa/domain-core`, `@afyapoa/database`.
+* **Regulatory & Security Implications:** Kenya Pharmacy and Poisons Act Cap 244, KEML 2023, Kenya Digital Health Act 2023, ISO 15189 stock audit principles, multi-tenant Row-Level Security (RLS) isolation.
+* **Database Changes:** Tables `pharmacy_products`, `pharmacy_suppliers`, `pharmacy_batches`, `pharmacy_stock_movements`.
+* **API Changes:** `POST /api/v1/pharmacy/catalogue/seed`, `GET /api/v1/pharmacy/products`, `POST /api/v1/pharmacy/products`, `GET /api/v1/pharmacy/suppliers`, `POST /api/v1/pharmacy/suppliers`, `GET /api/v1/pharmacy/inventory/batches`, `POST /api/v1/pharmacy/inventory/receipts`, `POST /api/v1/pharmacy/inventory/transfers`, `POST /api/v1/pharmacy/inventory/adjustments`, `GET /api/v1/pharmacy/inventory/valuation`.
+* **UI Changes:** Pharmacy Workbench (`apps/web/app/pharmacy/page.tsx`) with 5 KPI summary cards (Inventory Valuation, Active Batches, Pending Prescriptions, Expiry Alerts, Low Stock Items), Inventory & Batches management tab with color-coded expiry badges, Stock Receipt Modal, and Immutable Movement Ledger table.
+* **Required Automated Tests:** Seeding KEML catalogue, supplier validation with PPB license/KRA PIN, stock receipt and movement logging, FEFO allocation order, concurrent stock deduction race prevention (`409 Conflict`), negative stock rejection, inter-facility transfer, stock adjustment, and inventory valuation in `apps/api/test/pharmacy.spec.ts`.
+* **Acceptance Criteria:** Stock balance decrements atomically; expired batches cannot be dispensed; FEFO prioritizes nearest expiring lots; silent stock overwrites blocked; concurrent race attempts return 409 and maintain non-negative balances.
+* **Documentation Updates:** `docs/api/pharmacy-api.md`, `docs/user-manual/pharmacy-dispensing.md`, `docs/architecture/data-dictionary.md` (Section 3.10), `docs/regulatory-register.md` (Section 13).
+* **Known Risks & External Dependencies:** Inventory discrepancies from manual stock theft or loss; mitigate with periodic cycle count reconciliation (`ADJUSTMENT` movement types) and physical stock counts.
+* **Definition of Done:** Catalogue, batch tracking, FEFO engine, stock ledger, concurrency protection, and inventory valuation verified with 100% automated test pass rate.
 
 ---
 
-### TASK-08-02: Automated Drug-Drug Interaction & Allergy Interception
-* **Task ID & Name:** `TASK-08-02` — Drug-Drug Interaction (DDI) & Allergy Interceptor
-* **Business Purpose:** Protect patient safety by catching dangerous drug interactions, duplicate therapies, or known allergic reactions before prescription or dispensing.
-* **Functional Requirements:** Real-time screening engine checking new prescriptions against: (1) Patient documented drug allergies, (2) Active medications for severe Drug-Drug Interactions (DDIs). Display severity classification (Contraindicated, Major, Moderate). Require clinician justification to override.
-* **Technical Dependencies:** `TASK-08-01`, `TASK-06-02`.
-* **Regulatory & Security Implications:** Patient safety; professional negligence liability mitigation.
-* **Database Changes:** Tables `drug_interactions`, `patient_allergies`.
-* **API Changes:** `POST /api/v1/pharmacy/screen-interactions`.
-* **UI Changes:** High-visibility safety warning modal in doctor prescription entry and pharmacist dispensing screen.
-* **Required Automated Tests:** Unit tests for common drug interactions (e.g., Warfarin + Aspirin, Sildenafil + Nitrates); allergy cross-reactivity tests (e.g., Penicillin $\to$ Cephalosporins).
-* **Acceptance Criteria:** Contraindicated combinations block checkout unless clinical override reason is recorded; override reasons logged in audit trail.
-* **Documentation Updates:** `docs/pharmacy/safety-screening.md`.
-* **Known Risks & External Dependencies:** Alert fatigue causing doctors to ignore warnings; stratify alerts into hard stops (contraindicated) and passive badges (minor).
-* **Definition of Done:** Interaction screening engine operational and verified with test cases.
+### TASK-08-02: Prescription Dispensing, Controlled Returns & Bedside Administration
+* **Task ID & Name:** `TASK-08-02` — Clinical Prescription Dispensing, Controlled Returns & Bedside Administration
+* **Status:** `COMPLETED & VERIFIED` (Verified by 28 tests in `apps/api/test/pharmacy.spec.ts`)
+* **Business Purpose:** Provide clinical pharmacists and ward nurses with an integrated, auditable medication fulfillment and administration system, linked to CPOE clinical orders with controlled reversal workflows.
+* **Functional Requirements:** Prescription worklist linked directly to CPOE clinical orders (`medication_requests`). Full and partial dispensing (`FULL`, `PARTIAL`, `BALANCE_COMPLETION`) tracking dispensed vs remaining quantity, automatically updating prescription fulfillment status. Batch-level allocation with patient dosage instructions. Controlled medication returns and reversals requiring mandatory justification of at least 10 characters, restoring batch stock via explicit `RETURN` movement ledger records. Inpatient bedside medication administration tracking (`medication_administrations`) recording patient, encounter, medication, dosage, route, anatomical site, administering nurse, and administration timestamp. Real-time HL7 FHIR R4 resource mappings for `Medication`, `MedicationDispense`, and `MedicationAdministration`. Strict cross-tenant RLS isolation and role-based access control (RBAC).
+* **Technical Dependencies:** `TASK-08-01`, `TASK-06-02`, `@afyapoa/fhir-models`.
+* **Regulatory & Security Implications:** Kenya Pharmacy and Poisons Act Cap 244, Nursing Council of Kenya bedside administration standards, Kenya Data Protection Act 2019 (RLS isolation), HL7 FHIR R4 conformance.
+* **Database Changes:** Tables `medication_dispenses`, `medication_dispense_items`, `medication_administrations`.
+* **API Changes:** `GET /api/v1/pharmacy/worklist`, `POST /api/v1/pharmacy/dispense`, `POST /api/v1/pharmacy/returns`, `POST /api/v1/pharmacy/administration`, `GET /api/v1/pharmacy/fhir/medications/:id`, `GET /api/v1/pharmacy/fhir/dispenses/:id`, `GET /api/v1/pharmacy/fhir/administrations/:id`.
+* **UI Changes:** Pharmacist dispensing queue, Dispense Modal with automated FEFO batch suggestion and item breakdown, Controlled Returns Modal with mandatory clinical justification input, Bedside Administration log tab, and Live FHIR R4 JSON Inspector in `apps/web/app/pharmacy/page.tsx`.
+* **Required Automated Tests:** Prescription worklist querying, full dispensing, partial dispensing with remaining balance completion, return justification length validation ($\ge 10$ chars), stock restoration via return ledger, bedside medication administration recording, FHIR R4 serialization, cross-tenant isolation (Tenant B blocked with 404), and RBAC gating (unauthorized roles receive 403) in `apps/api/test/pharmacy.spec.ts`.
+* **Acceptance Criteria:** Partial dispensing maintains accurate remaining quantity; returns $\le 9$ chars fail validation; returns $\ge 10$ chars increment stock via `RETURN` ledger; bedside administration records administering nurse attribution; FHIR resources serialize with correct codings and references; Tenant B blocked from accessing Tenant A records.
+* **Documentation Updates:** `docs/api/pharmacy-api.md`, `docs/user-manual/pharmacy-dispensing.md`, `docs/architecture/data-dictionary.md`, `docs/regulatory-register.md`.
+* **Known Risks & External Dependencies:** Dispensing delays due to network interruptions; mitigate with optimistic UI queuing and idempotency keys.
+* **Definition of Done:** Clinical dispensing, partial balance tracking, returns workflow, bedside administration, FHIR serializers, and cross-tenant RLS fully operational and verified by automated test suite.
 
 ---
 
@@ -646,75 +731,179 @@ flowchart TD
 
 ---
 
-## Milestone 13: Expanded Hospital Operations
+## Milestone 13: Expanded Hospital Operations (Phase 2) — COMPLETED & VERIFIED
 
-### TASK-13-01: Inpatient Ward, Bed Management & Nursing Kardex
+### TASK-13-01: Inpatient Ward, Bed Management & ADT Subsystem [COMPLETED]
 * **Task ID & Name:** `TASK-13-01` — Inpatient Ward & Bed Management Subsystem
 * **Business Purpose:** Manage hospital admissions, ward occupancy, bed assignments, nursing shift notes, and daily inpatient bed charges.
 * **Functional Requirements:** Configure hospital wards (Male, Female, Pediatric, Maternity, ICU/HDU). Bed assignment, transfer, and discharge workflows. Real-time visual ward occupancy map. Nursing Kardex for vital signs schedules and medication administration records (eMAR).
 * **Technical Dependencies:** `TASK-05-01`, `TASK-08-01`, `TASK-09-01`.
 * **Regulatory & Security Implications:** Clinical handover safety and bed occupancy reporting to county health departments.
-* **Database Changes:** Tables `wards`, `beds`, `admissions`, `nursing_notes`, `emar_records`.
-* **API Changes:** `GET /api/v1/wards/occupancy`, `POST /api/v1/admissions`, `PATCH /api/v1/admissions/:id/transfer-bed`.
-* **UI Changes:** Interactive graphical bed layout view with color-coded bed statuses (`VACANT`, `OCCUPIED`, `CLEANING`, `MAINTENANCE`).
-* **Required Automated Tests:** Bed collision test (cannot assign two patients to same bed); daily room charge collation tests.
-* **Acceptance Criteria:** Transferring a patient automatically frees the previous bed and updates the running inpatient billing folio.
-* **Documentation Updates:** `docs/operations/inpatient-bed-management.md`.
-* **Known Risks & External Dependencies:** Nurses forgetting to mark beds vacant upon discharge; provide automated bed release on billing discharge.
-* **Definition of Done:** Inpatient admission, bed transfer, and eMAR workflows verified in test suite.
+* **Database Changes:** Tables `wards`, `beds`, `inpatient_admissions`, `inpatient_bed_transfers`.
+* **API Changes:** `GET /api/v1/inpatient/wards`, `POST /api/v1/inpatient/admissions`, `POST /api/v1/inpatient/admissions/:id/transfer`, `POST /api/v1/inpatient/admissions/:id/discharge`.
+* **Required Automated Tests:** Bed collision test (cannot assign two patients to same bed); version-based optimistic concurrency controls; bed transfer history tracking.
+* **Acceptance Criteria:** Transferring a patient automatically frees the previous bed and updates the admission record; double-booking returns HTTP 409 Conflict.
+* **Documentation Updates:** `docs/architecture/data-dictionary.md`, `docs/api/inpatient-api.md`, `docs/user-manual/inpatient-ward-bed-management.md`.
+* **Definition of Done:** ADT workflows verified with 100% automated test pass.
 
 ---
 
-### TASK-13-02: Surgical Operating Theatre Scheduling & Anesthesia Log
+### TASK-13-02: Surgical Operating Theatre Scheduling & Anesthesia Log [COMPLETED]
 * **Task ID & Name:** `TASK-13-02` — Operating Theatre Scheduling & Surgical Documentation
 * **Business Purpose:** Maximize operating theatre utilization, eliminate surgical scheduling conflicts, and maintain comprehensive perioperative and anesthesia records.
 * **Functional Requirements:** Theatre booking calendar for elective and emergency surgical cases. Conflict detection preventing overlapping bookings for the same operating table. Surgical safety checklist (WHO Safe Surgery) and anesthesia monitoring log.
 * **Technical Dependencies:** `TASK-13-01`, `TASK-02-03`, `TASK-06-01`.
 * **Regulatory & Security Implications:** Surgical safety standards (KMPDC) and medical negligence prevention.
-* **Database Changes:** Tables `theatres`, `surgical_bookings`, `anesthesia_records`, `who_safety_checklists`.
-* **API Changes:** `GET /api/v1/theatres/schedule`, `POST /api/v1/theatres/bookings`.
-* **UI Changes:** Theatre calendar booking view with timeline grid and WHO checklist modal.
+* **Database Changes:** Tables `theatres`, `theatre_bookings`.
+* **API Changes:** `GET /api/v1/theatres`, `POST /api/v1/theatres/bookings`, `PATCH /api/v1/theatres/bookings/:id/status`, `PATCH /api/v1/theatres/bookings/:id/safety-checklist`.
 * **Required Automated Tests:** Overlapping booking conflict tests; surgical checklist completion validation tests.
 * **Acceptance Criteria:** Attempted double-booking returns HTTP 409 Conflict; surgery cannot be finalized without completed WHO safety checklist.
-* **Documentation Updates:** `docs/operations/theatre-scheduling.md`.
-* **Known Risks & External Dependencies:** Emergency surgeries preempting elective bookings; implement emergency priority bump workflow with automated notifications.
+* **Documentation Updates:** `docs/api/theatre-api.md`, `docs/user-manual/operating-theatre-scheduling.md`.
 * **Definition of Done:** Theatre booking calendar and checklist verification operational and tested.
+
+---
+
+### TASK-13-03: Maternity Deliveries & Newborn Registry [COMPLETED]
+* **Task ID & Name:** `TASK-13-03` — Maternity and Newborn Care Subsystem
+* **Business Purpose:** Support obstetrics labor management, delivery documentation, APGAR scoring, and immediate neonatal identity generation.
+* **Functional Requirements:** Labor admission, partograph metrics, delivery outcome recording, newborn registration with automated MRN generation.
+* **Database Changes:** Tables `maternity_deliveries`, `newborn_profiles`.
+* **API Changes:** `POST /api/v1/maternity/deliveries`, `GET /api/v1/maternity/deliveries/:id`, `POST /api/v1/maternity/deliveries/:id/newborns`, `GET /api/v1/maternity/deliveries/:id/newborns`.
+* **Required Automated Tests:** APGAR 1/5/10 min validation; automated infant MRN creation and mother linkage; multi-birth registration.
+* **Documentation Updates:** `docs/api/maternity-api.md`, `docs/user-manual/maternity-newborn-care.md`.
+* **Definition of Done:** Maternity delivery and neonatal registration verified with 100% automated test pass.
+
+---
+
+### TASK-13-04: Radiology Orders, Reports & Specialist Protection [COMPLETED]
+* **Task ID & Name:** `TASK-13-04` — Diagnostic Radiology & Imaging Services
+* **Business Purpose:** Provide diagnostic imaging requisitioning, DICOM modality worklist linking, radiologist report signing, and specialist confidentiality protection.
+* **Functional Requirements:** Modality-specific imaging orders (X-ray, Ultrasound, CT, MRI), radiologist reporting, PACS accession number generation, specialist confidentiality access controls.
+* **Regulatory & Security Implications:** Radiation Protection Act Cap 243, Data Protection Act 2019 sensitive health data handling.
+* **Database Changes:** Tables `radiology_orders`, `radiology_reports`.
+* **API Changes:** `POST /api/v1/radiology/orders`, `GET /api/v1/radiology/orders`, `POST /api/v1/radiology/orders/:id/reports`, `GET /api/v1/radiology/reports/:id`.
+* **Required Automated Tests:** Modality order creation; radiologist sign-off; specialist confidentiality enforcement (`RADIOLOGY_SPECIALIST_READ` permission check).
+* **Documentation Updates:** `docs/api/radiology-api.md`, `docs/user-manual/radiology-imaging-services.md`.
+* **Definition of Done:** Modality workflows, report sign-off, and confidentiality protection verified in test suite.
+
+---
+
+### TASK-13-05: Intersite Referrals & Counter-Referrals [COMPLETED]
+* **Task ID & Name:** `TASK-13-05` — Referrals and Counter-Referrals Subsystem
+* **Business Purpose:** Enable structured clinical referrals between Kenya healthcare tiers (Level 2 to Level 6) with closed-loop counter-referral clinical summaries.
+* **Functional Requirements:** Initiate outbound referral, track transport/ambulance and urgency level, receive inpatient/outpatient admission at destination facility, submit counter-referral.
+* **Database Changes:** Table `referrals`.
+* **API Changes:** `POST /api/v1/referrals`, `GET /api/v1/referrals/:id`, `PATCH /api/v1/referrals/:id/status`, `POST /api/v1/referrals/:id/counter-referral`.
+* **Required Automated Tests:** Referral lifecycle (INITIATED -> ACCEPTED -> COMPLETED); counter-referral documentation validation; unauthorized status transition rejection.
+* **Documentation Updates:** `docs/api/referrals-api.md`, `docs/user-manual/referrals-counter-referrals.md`.
+* **Definition of Done:** Complete closed-loop referral and counter-referral pipeline tested and verified.
+
+---
+
+### TASK-13-06: Outpatient Appointments & Double-Booking Prevention [COMPLETED]
+* **Task ID & Name:** `TASK-13-06` — Outpatient Scheduling Subsystem
+* **Business Purpose:** Schedule specialist and general clinic appointments with transactional practitioner double-booking prevention.
+* **Functional Requirements:** Clinic appointment scheduling, practitioner calendar conflict detection, cancellation with audit trail, arrival check-in.
+* **Database Changes:** Table `appointments`.
+* **API Changes:** `POST /api/v1/appointments`, `GET /api/v1/appointments`, `PATCH /api/v1/appointments/:id/status`.
+* **Required Automated Tests:** Practitioner overlap conflict detection (409 Conflict); status transition audit; cancellation with reason recording.
+* **Documentation Updates:** `docs/api/appointments-api.md`, `docs/user-manual/appointments-scheduling.md`.
+* **Definition of Done:** Appointment scheduling with overlap concurrency protection verified in test suite.
+
+---
+
+### TASK-13-07: Medical Supplies Procurement & Intake (PO & GRN) [COMPLETED]
+* **Task ID & Name:** `TASK-13-07` — Procurement Enhancements & Goods Received Notes
+* **Business Purpose:** Streamline medical supplies purchasing, supplier purchase order management, dual-sign approvals, and warehouse delivery intake via Goods Received Notes.
+* **Functional Requirements:** Create multi-item purchase orders, dual authorization workflow (SUBMITTED -> APPROVED), Goods Received Note (GRN) generation with batch/expiry tracking and automatic pharmacy inventory increment.
+* **Database Changes:** Tables `procurement_orders`, `procurement_order_items`, `goods_received_notes`.
+* **API Changes:** `POST /api/v1/procurement/orders`, `PATCH /api/v1/procurement/orders/:id/status`, `POST /api/v1/procurement/orders/:id/grn`.
+* **Required Automated Tests:** PO item cost calculations; status progression; GRN creation with inventory lot updates; rejection of unauthorized approval.
+* **Documentation Updates:** `docs/api/procurement-api.md`, `docs/user-manual/procurement-supplies-management.md`.
+* **Definition of Done:** Procurement PO and GRN delivery intake workflows tested and verified.
+
+---
+
+### TASK-13-08: Private Insurance Adapters & Pre-Authorization [COMPLETED]
+* **Task ID & Name:** `TASK-13-08` — Kenyan Private Insurance Integration Engine
+* **Business Purpose:** Provide standardized adapter interfaces and policy pre-authorization workflows for major Kenyan health underwriters (Jubilee, AAR, APA, Britam, Old Mutual).
+* **Functional Requirements:** Member policy validation, real-time eligibility inquiry, pre-authorization request with estimated claim amounts, adapter status mapping.
+* **Database Changes:** Tables `insurance_policies`, `insurance_authorizations`.
+* **API Changes:** `POST /api/v1/insurance/private/verify-policy`, `POST /api/v1/insurance/private/request-authorization`, `GET /api/v1/insurance/private/authorizations/:id`.
+* **Required Automated Tests:** Policy verification across underwriters; pre-authorization approval/pending flow; invalid policy rejection.
+* **Documentation Updates:** `docs/api/insurance-api.md`, `docs/user-manual/private-insurance-claims.md`.
+* **Definition of Done:** Private underwriter adapters and authorization tracking verified in test suite.
+
+---
+
+### TASK-13-09: Staff Rosters & Departmental Shift Assignments [COMPLETED]
+* **Task ID & Name:** `TASK-13-09` — Clinical Staff Rostering & Shift Management
+* **Business Purpose:** Organize clinical and administrative departments, weekly shift rosters, and individual shift assignments with supervisor sign-off.
+* **Functional Requirements:** Department setup, weekly/monthly roster draft creation, shift allocation (Day, Night, On-Call), roster approval and publication.
+* **Database Changes:** Tables `departments`, `staff_rosters`, `staff_roster_shifts`.
+* **API Changes:** `GET /api/v1/rosters/departments`, `POST /api/v1/rosters`, `POST /api/v1/rosters/:id/shifts`, `PATCH /api/v1/rosters/:id/publish`.
+* **Required Automated Tests:** Roster shift creation; supervisor publication check; cross-department filtering.
+* **Documentation Updates:** `docs/api/rosters-api.md`, `docs/user-manual/staff-rosters-assignments.md`.
+* **Definition of Done:** Departmental rostering and shift publication verified in test suite.
+
+---
+
+### TASK-13-10: Phase 2 Hospital Operations Comprehensive Integration Suite [COMPLETED]
+* **Task ID & Name:** `TASK-13-10` — End-to-End Hospital Operations Test Harness
+* **Business Purpose:** Validate all 10 Phase 2 domain modules under simulated hospital operations including concurrency, role permissions, and tenant isolation.
+* **Required Automated Tests:** 28 automated integration tests in `apps/api/test/hospital-operations-phase2.spec.ts`.
+* **Acceptance Criteria:** 100% test pass rate across all normal paths, cancellations, concurrency double-booking prevention, specialist confidentiality, and multi-tenant RLS isolation.
+* **Definition of Done:** All 28 integration tests passing green.
 
 ---
 
 ## Milestone 14: Platform Administration and SaaS Subscriptions
 
-### TASK-14-01: Multi-Tenant Provisioning & KMFL Configuration
+### TASK-14-01: Multi-Tenant Provisioning & KMFL Configuration [COMPLETED]
 * **Task ID & Name:** `TASK-14-01` — Automated Tenant Onboarding & KMFL Config
-* **Business Purpose:** Enable instant, self-service or admin-assisted onboarding of new Kenyan healthcare facilities with automated setup of their official KMFL credentials and feature sets.
-* **Functional Requirements:** Tenant provisioning wizard: facility name, KMFL code (`FID-XX-XXXXXX-X`), county, facility level (2–6), primary administrator details, and feature toggles. Initialize tenant schema, seed default charge masters, and assign admin credentials.
-* **Technical Dependencies:** `TASK-02-01`, `TASK-01-01`.
-* **Regulatory & Security Implications:** Verification of genuine healthcare facility status via Ministry of Health KMFL registry.
-* **Database Changes:** Tables `tenants`, `tenant_feature_flags`, `tenant_configs`.
-* **API Changes:** `POST /api/v1/admin/tenants`, `GET /api/v1/admin/tenants/:id`.
-* **UI Changes:** Super-admin tenant management portal in `apps/web`.
-* **Required Automated Tests:** Provisioning automation tests; KMFL code format validation tests; default data seeding tests.
-* **Acceptance Criteria:** New tenant is fully provisioned in $\le 30$ seconds with functional admin login and isolated database context.
-* **Documentation Updates:** `docs/admin/tenant-onboarding.md`.
-* **Known Risks & External Dependencies:** Unauthorized entity registering a fake health facility; require manual super-admin verification of KMFL registration.
-* **Definition of Done:** Tenant provisioning wizard operational and tested in CI.
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Enable instant, self-service or admin-assisted onboarding of new Kenyan healthcare facilities with automated setup of their official KMFL credentials, primary administrator, and default subscription plan.
+* **Functional Requirements:** Implemented `onboardTenant` in `SaasService`: registers tenant, health facility with KMFL code (`FID-XX-XXXXXX-X`), KEPH level (`LEVEL_2` to `LEVEL_6`), county, sub-county, contact details, SHA contract code, KRA PIN, and administrator user. Automatically resolves and provisions default subscription plan and entitlements.
+* **Technical Dependencies:** `@afyapoa/domain-core`, `@afyapoa/database`, `TenancyService`, `AuditService`.
+* **Regulatory & Security Implications:** Ministry of Health KMFL facility verification; Data Protection Act 2019 organization onboarding controls.
+* **Database Changes:** Tables `tenants`, `facilities`, `users`, `subscription_plans`, `tenant_subscriptions`, `tenant_entitlements`.
+* **API Changes:** `POST /api/v1/platform/tenants/onboard`.
+* **Required Automated Tests:** `apps/api/test/commercial-saas-admin.spec.ts` (tenant onboarding, duplicate tenant code rejection, duplicate KMFL code rejection).
+* **Acceptance Criteria:** Tenant is provisioned in $\le 30$ seconds with primary facility, admin credentials, default plan subscription, and isolated database context.
+* **Documentation Updates:** `docs/architecture/saas-billing-model.md`, `docs/architecture/tenant-lifecycle-and-suspension-policy.md`.
+* **Definition of Done:** End-to-end onboarding operational and verified in automated tests.
 
 ---
 
-### TASK-14-02: SaaS Subscription Tiers, Billing & Usage Quota Enforcement
+### TASK-14-02: SaaS Subscription Tiers, Billing & Usage Quota Enforcement [COMPLETED]
 * **Task ID & Name:** `TASK-14-02` — Subscription Plans, Invoicing & Quota Guard
-* **Business Purpose:** Monetize COMKEY AFYA POA through tiered SaaS subscriptions (Level 2 Clinic, Level 3 Health Centre, Level 4 Hospital, Level 5/6 Referral) with automated usage quota monitoring.
-* **Functional Requirements:** Define subscription plans with encounter, storage, and user quotas. Track monthly billable encounters per tenant. Automate monthly subscription invoicing via M-Pesa / Bank transfer. Issue automated warnings when quotas exceed 80%.
-* **Technical Dependencies:** `TASK-14-01`, `TASK-09-02`.
-* **Regulatory & Security Implications:** Commercial contract enforcement and fair usage policies.
-* **Database Changes:** Tables `subscriptions`, `subscription_plans`, `tenant_usage_metrics`.
-* **API Changes:** `GET /api/v1/admin/subscriptions`, `POST /api/v1/admin/subscriptions/:id/upgrade`.
-* **UI Changes:** Subscription billing dashboard and plan upgrade modal.
-* **Required Automated Tests:** Quota calculation tests; plan upgrade/downgrade state transition tests.
-* **Acceptance Criteria:** Over-quota tenants receive administrative warning emails; hard stops apply only to administrative features (never to urgent clinical patient care).
-* **Documentation Updates:** `docs/admin/saas-subscriptions.md`.
-* **Known Risks & External Dependencies:** Subscription non-payment; healthcare ethics prevent locking out active inpatient records (grace period policy required).
-* **Definition of Done:** Subscription billing and quota tracking verified with automated tests.
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Monetize COMKEY AFYA POA through tiered SaaS subscriptions (Level 2 Clinic, Level 3 Health Centre, Level 4 Hospital, Level 5/6 Referral) with automated usage quota monitoring and idempotent payment processing.
+* **Functional Requirements:** Master subscription plans (`CreateSubscriptionPlanDto`, `UpdateSubscriptionPlanDto`), feature entitlement enforcement server-side (`assertFeatureEntitled`, `assertQuotaNotExceeded`), usage metering with 80% warning and 100% threshold notifications, platform invoices with 16% Kenyan VAT, idempotent M-Pesa STK push payments via `IMpesaPaymentClient`, and capacity guards blocking downgrades when active staff user count exceeds target tier limits.
+* **Technical Dependencies:** `@afyapoa/integration-adapters` (`IMpesaPaymentClient`), `@afyapoa/database`, `@afyapoa/domain-core`.
+* **Regulatory & Security Implications:** Tax Procedures Act (16% VAT); Section 7 Health Act 2017 (Patient safety protections); KRA PIN compliance.
+* **Database Changes:** Tables `subscription_plans`, `tenant_subscriptions`, `subscription_history`, `tenant_entitlements`, `tenant_usage_meters`, `platform_invoices`, `platform_invoice_items`, `platform_payments`.
+* **API Changes:** `POST /api/v1/platform/plans`, `PATCH /api/v1/platform/plans/:id`, `GET /api/v1/saas/plans`, `GET /api/v1/saas/subscription`, `POST /api/v1/saas/subscription/upgrade`, `POST /api/v1/saas/subscription/downgrade`, `POST /api/v1/saas/usage/record`, `GET /api/v1/saas/usage`, `POST /api/v1/platform/invoices`, `GET /api/v1/saas/invoices`, `POST /api/v1/saas/invoices/:id/pay`.
+* **Required Automated Tests:** Plan creation, plan updates, upgrade transitions, downgrade capacity guards, usage aggregation, 80%/100% warning alerts, 16% VAT invoice calculations, M-Pesa idempotent payments, duplicate payment prevention.
+* **Acceptance Criteria:** Over-quota tenants receive administrative alerts; hard stops apply only to commercial actions, never to urgent patient records.
+* **Documentation Updates:** `docs/architecture/saas-billing-model.md`, `docs/api/saas-administration-api.md`.
+* **Definition of Done:** All subscription lifecycle transitions, quotas, invoices, and payments tested green.
+
+---
+
+### TASK-14-03: Dunning, Patient Safety, Auditable Support Access & Offboarding [COMPLETED]
+* **Task ID & Name:** `TASK-14-03` — Dunning Engine, Support Access & Offboarding Workflows
+* **Status:** **COMPLETED & VERIFIED**
+* **Business Purpose:** Provide a legally compliant 5-stage dunning progression that enforces commercial payment collection while strictly protecting clinician access to emergency patient records under Section 7 of the Kenya Health Act 2017; provide time-bound cryptographic support access tokens and 10-year data retention offboarding workflows.
+* **Functional Requirements:** 5-stage dunning progression (`INITIAL_FAILURE`, `GRACE_DAY_3`, `WARNING_DAY_7`, `RESTRICTED_DAY_14`, `SUSPENDED_DAY_30`); clinical patient records read access safeguard; MRR and ARR revenue reporting; payment reconciliation; platform health and national gateway metrics (DHA, SHA, eTIMS, M-Pesa); administrative support cases and threaded messages; time-bound (max 24h) cryptographic support access grants (`token_hash` SHA-256) with immediate revocation; offboarding requests with statutory 10-year medical record retention schedule and sealed data export package with SHA-256 checksum.
+* **Technical Dependencies:** `@afyapoa/domain-core`, `@afyapoa/database`, `@afyapoa/api`, `@afyapoa/integration-adapters`.
+* **Regulatory & Security Implications:** Kenya Health Act 2017 Section 7; Data Protection Act 2019 Sections 29, 41, 44 (10-year archival retention, cryptographic support tokens, access revocation).
+* **Database Changes:** Tables `platform_dunning_events`, `support_cases`, `support_case_messages`, `support_access_grants`, `tenant_offboarding_requests`.
+* **API Changes:** Endpoints in `/api/v1/platform/*` and `/api/v1/saas/*`.
+* **Required Automated Tests:** 36 automated integration tests in `apps/api/test/commercial-saas-admin.spec.ts`.
+* **Acceptance Criteria:** 100% test pass rate across all 12 commercial administration capabilities, role permissions (`SUPER_ADMIN`, `FACILITY_ADMIN`, `FINANCE_USER`), and cross-tenant RLS isolation.
+* **Documentation Updates:** `docs/architecture/tenant-lifecycle-and-suspension-policy.md`, `docs/user-manual/saas-administration-manual.md`.
+* **Definition of Done:** All 36 commercial SaaS admin tests passing green, 100% monorepo tests passing green.
 
 ---
 

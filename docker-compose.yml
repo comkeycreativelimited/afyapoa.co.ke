@@ -1,0 +1,3 @@
+# Root convenience Docker Compose wrapper pointing to infra/docker/docker-compose.yml
+include:
+  - infra/docker/docker-compose.yml

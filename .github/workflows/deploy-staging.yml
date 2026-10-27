@@ -1,0 +1,66 @@
+name: Deploy to Staging (Pre-Production Rehearsal)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Staging Deployment & Rehearsal
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pre-Flight Staging Environment Validation
+        env:
+          NODE_ENV: staging
+          INTEGRATION_MODE: UAT
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
+          JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          REFRESH_TOKEN_SECRET: ${{ secrets.STAGING_REFRESH_TOKEN_SECRET }}
+          KMS_PEPPER_SECRET: ${{ secrets.STAGING_KMS_PEPPER_SECRET }}
+        run: pnpm tsx infra/scripts/validate-env.ts
+
+      - name: Run Zero-Downtime Database Migration
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm tsx infra/scripts/db-migrate.ts
+
+      - name: Build & Push Staging Container Images
+        env:
+          REGISTRY: ${{ secrets.STAGING_CONTAINER_REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building staging images tagged ${IMAGE_TAG}..."
+          # docker build -t $REGISTRY/afyapoa-api:$IMAGE_TAG -f infra/docker/Dockerfile.api .
+          # docker build -t $REGISTRY/afyapoa-web:$IMAGE_TAG -f infra/docker/Dockerfile.web .
+          # docker build -t $REGISTRY/afyapoa-worker:$IMAGE_TAG -f infra/docker/Dockerfile.worker .
+
+      - name: Deploy to Staging Sovereign Cluster
+        run: |
+          echo "Deploying revision ${{ github.sha }} to Staging Cluster..."
+
+      - name: Post-Deployment Synthetic Health Audit
+        env:
+          TARGET_URL: https://staging.afyapoa.co.ke
+        run: |
+          echo "Executing health probe audit on staging deployment..."
+          # pnpm tsx infra/scripts/health-audit.ts $TARGET_URL

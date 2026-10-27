@@ -1,0 +1,185 @@
+# infra/docker/docker-compose.prod.yml
+# Production Container Stack for COMKEY AFYA POA
+# Security Hardening: Non-root execution, resource limits, no-new-privileges, internal network isolation
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: afyapoa-prod-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-afyapoa_prod_admin}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME:-afyapoa_prod_db}
+    volumes:
+      - prod_postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - internal_storage_net
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8192M
+        reservations:
+          cpus: "2.0"
+          memory: 4096M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-afyapoa_prod_admin} -d ${DATABASE_NAME:-afyapoa_prod_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: afyapoa-prod-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - prod_redis_data:/data
+    networks:
+      - internal_storage_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: afyapoa-prod-api
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${DATABASE_USER:-afyapoa_prod_admin}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME:-afyapoa_prod_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      KMS_PEPPER_SECRET: ${KMS_PEPPER_SECRET}
+      INTEGRATION_MODE: PROD
+      INTEGRATION_DRIVER: PRODUCTION
+      DHA_HIE_PROD_URL: ${DHA_HIE_PROD_URL:-https://api.hie.dha.go.ke}
+      DHA_CLIENT_ID: ${DHA_CLIENT_ID}
+      DHA_CLIENT_SECRET: ${DHA_CLIENT_SECRET}
+      SHA_CLAIMS_PROD_URL: ${SHA_CLAIMS_PROD_URL:-https://api.claims.sha.go.ke}
+      SHA_API_KEY: ${SHA_API_KEY}
+      KRA_ETIMS_PROD_URL: ${KRA_ETIMS_PROD_URL:-https://etims.kra.go.ke}
+      KRA_ETIMS_PIN: ${KRA_ETIMS_PIN}
+      KRA_ETIMS_DEVICE_ID: ${KRA_ETIMS_DEVICE_ID}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal_storage_net
+      - compute_net
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: afyapoa-prod-web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.afyapoa.co.ke}
+    networks:
+      - compute_net
+      - public_ingress_net
+    ports:
+      - "3000:3000"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: afyapoa-prod-worker
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DATABASE_USER:-afyapoa_prod_admin}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME:-afyapoa_prod_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KMS_PEPPER_SECRET: ${KMS_PEPPER_SECRET}
+      INTEGRATION_MODE: PROD
+      INTEGRATION_DRIVER: PRODUCTION
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal_storage_net
+      - compute_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+networks:
+  public_ingress_net:
+    driver: bridge
+  compute_net:
+    driver: bridge
+  internal_storage_net:
+    internal: true # Isolated backend network with zero external bridge access
+
+volumes:
+  prod_postgres_data:
+    name: afyapoa_prod_postgres_data
+  prod_redis_data:
+    name: afyapoa_prod_redis_data

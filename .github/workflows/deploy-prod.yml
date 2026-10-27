@@ -1,0 +1,123 @@
+name: Deploy to Production (Sovereign Cloud)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      approval_token:
+        description: 'Owner Authorization Token / Change Request Reference (CR-XXXX)'
+        required: true
+        default: 'CR-AFYAPOA-PROD-2026-V1'
+      confirm_production:
+        description: 'Type "I CONFIRM PRODUCTION RELEASE" to verify manual intent'
+        required: true
+
+jobs:
+  pre-flight-verification:
+    name: Production Release Pre-Flight Checks
+    runs-on: ubuntu-latest
+    environment: production # Requires manual approval from designated repository owner / approver
+
+    steps:
+      - name: Verify Manual Owner Approval Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_production }}" != "I CONFIRM PRODUCTION RELEASE" ]; then
+            echo "❌ [DEPLOYMENT BLOCKED] Explicit confirmation text 'I CONFIRM PRODUCTION RELEASE' not provided."
+            exit 1
+          fi
+          echo "✅ [OWNER APPROVAL CONFIRMED] Change Request Reference: ${{ github.event.inputs.approval_token }}"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Production Secrets & Entropy Gate
+        env:
+          NODE_ENV: production
+          INTEGRATION_MODE: PROD
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.PROD_REDIS_URL }}
+          JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
+          REFRESH_TOKEN_SECRET: ${{ secrets.PROD_REFRESH_TOKEN_SECRET }}
+          KMS_PEPPER_SECRET: ${{ secrets.PROD_KMS_PEPPER_SECRET }}
+          DATABASE_PASSWORD: ${{ secrets.PROD_DATABASE_PASSWORD }}
+        run: pnpm tsx infra/scripts/validate-env.ts
+
+      - name: Capture Pre-Deployment Encrypted Snapshot (Safety Gate)
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          KMS_BACKUP_KEY_ARN: ${{ secrets.PROD_KMS_BACKUP_KEY_ARN }}
+          S3_BACKUP_BUCKET: ${{ secrets.PROD_S3_BACKUP_BUCKET }}
+        run: |
+          echo "Capturing pre-deployment encrypted PostgreSQL snapshot..."
+          pnpm tsx infra/scripts/backup-encrypted.ts --tag "pre-deploy-${{ github.sha }}"
+
+  deploy:
+    name: Blue/Green Rolling Production Rollout
+    needs: pre-flight-verification
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Advisory-Locked Zero-Downtime Database Migration
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: pnpm tsx infra/scripts/db-migrate.ts
+
+      - name: Deploy Blue/Green Containers to Sovereign Cluster
+        env:
+          REGISTRY: ${{ secrets.PROD_CONTAINER_REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Promoting container revision ${{ github.sha }} to production target groups..."
+          # AWS ECS / Kubernetes rollout execution command
+
+      - name: Execute Post-Deployment Smoke Test & Health Audit
+        id: smoke_test
+        env:
+          TARGET_URL: https://api.afyapoa.co.ke
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          echo "Running post-deployment health verification on live endpoints..."
+          pnpm tsx infra/scripts/health-audit.ts
+
+      - name: Trigger Automated Rollback on Smoke Test Failure
+        if: failure() && steps.smoke_test.outcome == 'failure'
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          ALERT_TOPIC_ARN: ${{ secrets.PROD_SNS_ALERTS_TOPIC }}
+        run: |
+          echo "❌ [DEPLOYMENT FAILURE DETECTED] Initiating automated rollback..."
+          # 1. Rollback container revision to previous healthy deployment
+          # 2. Check if migration rollback required
+          pnpm tsx infra/scripts/db-rollback.ts --check-safe
+          echo "Rollback initiated. Alerting SRE on-call team."

@@ -1,0 +1,85 @@
+# infra/docker/docker-compose.staging.yml
+# Staging / Pre-Production Rehearsal Container Stack for COMKEY AFYA POA
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: afyapoa-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-afyapoa_staging_admin}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-staging_secure_pass_123}
+      POSTGRES_DB: ${DATABASE_NAME:-afyapoa_staging_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-afyapoa_staging_admin} -d ${DATABASE_NAME:-afyapoa_staging_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: afyapoa-staging-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - staging_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: afyapoa-staging-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      PORT: 4000
+      DATABASE_URL: postgresql://${DATABASE_USER:-afyapoa_staging_admin}:${DATABASE_PASSWORD:-staging_secure_pass_123}@postgres:5432/${DATABASE_NAME:-afyapoa_staging_db}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-staging-jwt-secret-min-32-chars-length}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-staging-refresh-secret-min-32-chars}
+      KMS_PEPPER_SECRET: ${KMS_PEPPER_SECRET:-staging-pepper-secret-min-32-chars}
+      INTEGRATION_MODE: UAT
+      INTEGRATION_DRIVER: SANDBOX
+      DHA_HIE_UAT_URL: ${DHA_HIE_UAT_URL:-https://sandbox.hie.dha.go.ke}
+      SHA_CLAIMS_UAT_URL: ${SHA_CLAIMS_UAT_URL:-https://sandbox.claims.sha.go.ke}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: afyapoa-staging-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://api:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  staging_postgres_data:
+    name: afyapoa_staging_postgres_data
+  staging_redis_data:
+    name: afyapoa_staging_redis_data

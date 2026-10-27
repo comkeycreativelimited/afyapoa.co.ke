@@ -1,0 +1,17 @@
+# infra/docker/.dockerignore
+**/.git
+**/.gitignore
+**/.github
+**/.turbo
+**/.vscode
+**/node_modules
+**/coverage
+**/dist
+**/*.log
+**/*.tsbuildinfo
+.env*
+!.env.example
+README.md
+docs/
+tmp/
+scratch/

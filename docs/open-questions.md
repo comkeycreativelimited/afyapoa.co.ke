@@ -21,8 +21,8 @@ In strict compliance with architectural and regulatory governance directives:
 
 | Issue ID | Source URL Attempted | Failure / Ambiguity Encountered | Date Attempted | Current Status | Impact on Architecture |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **OQ-SRC-01** | `https://afyalink.dha.go.ke/` | HTTP request failed: DNS resolution failure (`dial tcp: lookup afyalink.dha.go.ke: no such host`). | Oct 19, 2026 | **UNAVAILABLE** | Must clarify whether AfyaLink has been rebranded/migrated to `https://afyaconnect.dha.go.ke` or `https://hie-docs.dha.go.ke`. |
-| **OQ-SRC-02** | `https://afyaconnect.dha.go.ke` | DNS resolves, but developer registration portal requires verified Kenyan institutional credentials. | Oct 19, 2026 | **PENDING CREDENTIALS** | Sandbox developer keys cannot be auto-provisioned via public API; requires manual onboarding request to `afyaconnect.dha@gmail.com`. |
+| **OQ-SRC-01** | `https://afyalink.dha.go.ke/` | HTTP request failed: DNS resolution failure (`dial tcp: lookup afyalink.dha.go.ke: no such host`). | Oct 19, 2026 | **CONFIRMED DEPRECATED** | AfyaLink was the legacy NHIF portal. All active runtime APIs are centralized under the DHA HIE Gateway (`api.hie.dha.go.ke`). |
+| **OQ-SRC-02** | `https://afyaconnect.dha.go.ke` | Developer registration portal requires verified Kenyan institutional credentials. | Oct 19, 2026 | **ONBOARDING ONLY** | AfyaConnect is strictly an onboarding and documentation portal; it does not process live claim transactions. UAT tests require institutional credential grant. |
 | **OQ-SRC-03** | `https://new.kenyalaw.org/` | Legal repository search indicates appeal ongoing in Court of Appeal (Civil Application E387 of 2024); final appellate decree date not yet gazetted. | Oct 19, 2026 | **MONITORING** | Substantive constitutional validity remains subject to appellate outcome. |
 
 ---
@@ -49,8 +49,12 @@ In strict compliance with architectural and regulatory governance directives:
 * **Open Question:** What is the official DHA/SHA policy on offline service delivery? If a facility loses connectivity:
   * Can ECCIF emergency encounters be recorded in local offline cache and transmitted retroactively within the 24-hour limit?
   * What cryptographic mechanism or local timestamp is accepted by SHA to prove that an emergency patient presented while offline?
+* **Milestone 13 Architectural Resolution:**
+  * Implemented strict Section 47 DHA Invariant: Queued offline patients are preserved in `UNVERIFIED_OFFLINE` / `PENDING_VERIFICATION` status without assigning synthetic or authoritative CR IDs/UPIs until remote DHA verification succeeds.
+  * Risk Gating: Queuing of operations requiring live external authorization (`SHA_CLAIM_SUBMIT`, `SHA_PREAUTH_REQUEST`, `BIOMETRIC_CONSENT_VERIFY`, `KRA_ETIMS_FISCAL_SIGN`) is strictly prohibited offline to prevent fraud and financial liability.
+  * Encrypted Queues: Payloads stored offline are encrypted at rest with AES-256-GCM and reconciled via `POST /api/v1/registry/reconcile` upon connectivity restoration.
 * **Impact:** Local offline-first architecture, local encryption, conflict resolution queues.
-* **Resolution Strategy:** Formulate formal architectural clarification query to DHA Technical Standards Committee.
+* **Resolution Strategy:** Formulate formal architectural clarification query to DHA Technical Standards Committee for official national standard.
 
 ### OQ-TECH-04: KRA eTIMS API Integration Pattern for Health Services
 * **Domain:** Hospital Billing & Fiscal Compliance
@@ -60,6 +64,44 @@ In strict compliance with architectural and regulatory governance directives:
   * How are split bills handled when SHA pays 80% (claims invoice) and the patient pays 20% co-pay in cash? Are two separate eTIMS fiscal invoices generated, or one composite invoice with co-payer breakdown?
 * **Impact:** Invoicing data model and billing state machine.
 * **Resolution Strategy:** Consult KRA eTIMS technical team and review the latest eTIMS VSCU Technical Specifications (v2.1).
+
+### OQ-TECH-05: M-Pesa Daraja Payment Gateway Port Provisioning & Settlement Reconciliation
+* **Domain:** Cashless Patient Billing & Daraja STK Push Integration
+* **Verified Knowledge:** While national DHA and SHA integration APIs are published under centralized specifications, Safaricom Daraja API credentials (Shortcode, Consumer Key, Consumer Secret, Passkey) are issued per business/facility entity.
+* **Open Question:** In a multi-tenant HMIS SaaS, should Daraja credentials be managed centrally via an aggregator Paybill with B2B sub-account disbursement, or should each tenant clinic configure their independent Paybill/Till?
+* **Impact:** M-Pesa adapter isolation, billing settlement, and provisional adapter boundary.
+* **Resolution Strategy:** Currently maintained behind provisional port `IMpesaPaymentClient` with synthetic mock simulation to prevent contract fabrication until live tenant Daraja B2C/C2B contracts are provisioned.
+
+### OQ-TECH-06: Production Environment Switching Controls for Non-Privileged Tenants
+* **Domain:** Integration Gateway Security & Multi-Tenancy Isolation
+* **Verified Knowledge:** Multi-tenant facilities share a common application instance and backend infrastructure.
+* **Open Question:** What mechanism guarantees that ordinary facility administrators cannot maliciously or accidentally reconfigure outbound endpoints to point to unverified production or unauthorized third-party services?
+* **Status / Resolution:** Implemented deployment-level environment locking (`INTEGRATION_MODE=MOCK|UAT|PROD`) and programmatic safety guard (`assertSafeEnvironment`). Tenants can only configure authorized facility metadata (`X-Facility-Id`), while the integration mode and gateway endpoints remain strictly immutable at the tenant level.
+
+### OQ-TECH-07: Synthetic Mock Credentials vs. Authorized Live UAT Sandbox
+* **Domain:** SHA eClaims Adjudication & Pre-Authorization Testing
+* **Verified Knowledge:** The SHA Gateway (`api.hie.dha.go.ke`) requires mTLS client certificates and OAuth2 credentials provisioned through MOH/DHA.
+* **Open Question:** What synthetic credentials and mock personas should be used during CI/CD and automated development testing?
+* **Status / Resolution:** Implemented standalone synthetic simulator (`apps/mock-server`) and mock client adapters (`MockShaClaimsClient`, `MockShaPreauthClient`) marked with `isSynthetic: true`. Verified deterministic scenarios (positive, validation failures, auth errors, timeouts, duplicates). Live `UAT` sandbox execution is gated behind verified institutional credential provision.
+
+### OQ-TECH-08: SMART-on-FHIR OAuth 2.0 Scopes & Patient Launch Context
+* **Domain:** FHIR R4 REST Gateway & HIE Authorization
+* **Verified Knowledge:** The DHA HIE mandates OAuth2 Bearer tokens and patient consent headers (`X-Consent-Token`, `X-PUID`) on clinical exchange endpoints.
+* **Open Question:** Will DHA HIE mandate full SMART-on-FHIR App Launch (RFC 7591 / SMART v2) with granular clinical scopes (e.g., `patient/Patient.read`, `system/Observation.rs`) for external third-party health app integration, or will institutional mutual TLS (mTLS) plus facility-scoped client credentials remain the sole production exchange mechanism?
+* **Impact:** Affects external OAuth token introspection server and dynamic client registration architecture.
+* **Resolution Strategy:** Clarify with DHA HIE technical committee during HIE v2.0 pilot briefing.
+
+### OQ-TECH-09: DHA HIE v2.0 Profile Evolution & DiagnosticReport Component Hierarchy
+* **Domain:** Kenya Core FHIR Profiles (DiagnosticReport & Observation)
+* **Verified Knowledge:** Kenya Core IG defines standalone Observation profiles for vitals and laboratory results with LOINC and UCUM bindings.
+* **Open Question:** In multi-panel laboratory orders (e.g., full hemogram / CBC, lipid profile), does DHA mandate embedding result observations directly in `DiagnosticReport.result` references within an SHR bundle, or transmitting individual standalone Observation resources linked solely via `Observation.encounter` and `Observation.basedOn`?
+* **Status / Resolution:** Currently, all lab results are serialized as individual LOINC-coded Observations linked to Encounter and EpisodeOfCare per DHA SHR Invariant 2, ensuring universal compatibility.
+
+### OQ-TECH-10: Deferred / Unverified FHIR Profiles (Immunization, Device, Media, DocumentReference)
+* **Domain:** DHA Health Information Exchange Scope & Specialized Registries
+* **Verified Knowledge:** The initial Kenya Core FHIR IG (`https://fhir.dha.go.ke/core`) focuses on core demographic, encounter, condition, observation, allergy, prescription, dispense, and claim resources.
+* **Open Question:** When will official Kenya Core StructureDefinitions for `Immunization` (KEPI linkages), `Device` (PPB medical devices), and `Media`/`DocumentReference` (DICOM radiology summaries) be published and required for conformance certification?
+* **Status / Resolution:** These profiles are marked as **DEFERRED / UNVERIFIED** in the compliance matrix ([docs/regulatory-register.md](file:///c:/wamp64/www/afya-poa/docs/regulatory-register.md)). The FHIR validator and SHR generator strictly enforce verified profiles, preventing premature or non-standard serialization.
 
 ---
 
@@ -100,6 +142,9 @@ In strict compliance with architectural and regulatory governance directives:
 | **OQ-TECH-02** | High | Backend Integration Lead | Architectural Design (API Gateway) |
 | **OQ-TECH-03** | Critical | Principal Architect | Architectural Design (Data Layer) |
 | **OQ-TECH-04** | High | Billing & Compliance Lead | Financial Architecture Review |
+| **OQ-TECH-08** | Medium | FHIR Interoperability Lead | HIE v2.0 Architecture Review |
+| **OQ-TECH-09** | Low | Clinical Informatics Specialist | Laboratory Module Enhancement |
+| **OQ-TECH-10** | Medium | Lead Interoperability Architect | DHA Standards Harmonization |
 | **OQ-LEG-01** | Medium | Corporate Legal Counsel | Milestone Gating / Quarterly |
 | **OQ-LEG-02** | Medium | Regulatory Compliance Lead | Milestone Gating / Monthly |
 | **OQ-LEG-03** | Critical | Cloud Infrastructure Lead | Infrastructure Provisioning Design |

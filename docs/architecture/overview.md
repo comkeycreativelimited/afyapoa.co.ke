@@ -122,6 +122,20 @@ Inside the NestJS Modular Monolith, domain boundaries communicate via strictly d
 |  |  |  (Master Index)   |  | (FHIR R4 Adapter) |  |   (LOINC Coding)  |  |  (PPB/HPT Catalog) |  | |
 |  |  +-------------------+  +-------------------+  +-------------------+  +--------------------+  | |
 |  |           |                      |                       |                       |            | |
+|  |  +-----------------------------------------------------------------------------------------+  | |
+|  |  |                          PHASE 2 HOSPITAL OPERATIONS DOMAIN MODULES                     |  | |
+|  |  |  +--------------------+  +--------------------+  +--------------------+  +------------+ |  | |
+|  |  |  |  InpatientADTModule|  | OperatingTheatreMod|  | MaternityNewbornMod|  |RadiologyMod| |  | |
+|  |  |  |  - Wards & Beds    |  |  - Slot Overlap    |  |  - Partograph      |  | - DICOM/XR | |  | |
+|  |  |  |  - Optimistic Lock |  |  - WHO Safe Surgery|  |  - APGAR Scoring   |  | - Spec Auth| |  | |
+|  |  |  +--------------------+  +--------------------+  +--------------------+  +------------+ |  | |
+|  |  |  +--------------------+  +--------------------+  +--------------------+  +------------+ |  | |
+|  |  |  |  ReferralsModule   |  | AppointmentsModule |  | ProcurementModule  |  | RostersMod | |  | |
+|  |  |  |  - KMFL Dispatches |  |  - Double-Booking  |  |  - Dual PO Sign    |  | - Shifts   | |  | |
+|  |  |  |  - Counter-Referral|  |  - Consult Lifecycle|  | - GRN QA & Storage |  | - Publish  | |  | |
+|  |  |  +--------------------+  +--------------------+  +--------------------+  +------------+ |  | |
+|  |  +-----------------------------------------------------------------------------------------+  | |
+|  |           |                      |                       |                       |            | |
 |  |           v                      v                       v                       v            | |
 |  |  +-----------------------------------------------------------------------------------------+  | |
 |  |  |                                BillingFolioModule                                       |  | |
@@ -140,6 +154,10 @@ Inside the NestJS Modular Monolith, domain boundaries communicate via strictly d
 |  |  | - Terminology Service Client |  | - Inpatient Discharge Hook   |  |                     |  | |
 |  |  | - Multi-tenant Header Inject |  | - Asynchronous Callback Router| |                     |  | |
 |  |  +------------------------------+  +------------------------------+  +---------------------+  | |
+|  |  +-----------------------------------------------------------------------------------------+  | |
+|  |  |                          PrivateInsuranceAdaptersModule                                 |  | |
+|  |  |  - Jubilee, AAR, APA, Britam, Old Mutual (Eligibility, Copay, Preauthorizations)        |  | |
+|  |  +-----------------------------------------------------------------------------------------+  | |
 |  +-----------------------------------------------------------------------------------------------+ |
 +----------------------------------------------------------------------------------------------------+
 ```
@@ -264,3 +282,14 @@ To preserve structural integrity in the modular monolith, strict unidirectional 
 6. `DhaHieAdapterModule`: Encapsulates OAuth 2.0 tenant tokens, `X-Facility-Id` header injection, consent checking, and Shared Health Record writes.
 7. `ShaClaimsAdapterModule`: Implements the state machine for the 8 official integration scenarios, managing normal/specialized preauthorizations, doctor consent, and asynchronous status callbacks.
 8. `KraEtimsModule`: Formats invoices into VSCU specification payloads, signs invoices, and retrieves QR verification control codes.
+9. `InpatientModule`: Inpatient admission, discharge, and transfer (ADT) workflows, ward configuration, bed availability tracking, and optimistic concurrency version locking.
+10. `TheatreModule`: Operating theatre room scheduling, surgical procedure booking, slot overlap collision prevention, and electronic WHO Safe Surgery checklist attestations (Sign In, Time Out, Sign Out).
+11. `MaternityModule`: Intrapartum delivery records, partograph progression summaries, perineal trauma classifications, and neonatal birth profiles with APGAR scoring at 1/5/10 min and automated linked newborn MRN issuance.
+12. `RadiologyModule`: Diagnostic imaging order management across modalities (XR, CT, MRI, US), PACS DICOM Study Instance UID linking, radiologist findings and impressions, auditable amendment trails, and specialist confidentiality RBAC guards.
+13. `ReferralsModule`: Outbound and inbound inter-facility referral coordination with KMFL registry resolution, priority dispatch, transport logistics, and specialist counter-referral clinical feedback tracking.
+14. `AppointmentsModule`: Outpatient consultation booking, practitioner double-booking conflict detection, visit status progression (`SCHEDULED` -> `CONFIRMED` -> `CHECKED_IN` -> `IN_CONSULTATION` -> `COMPLETED`), and structured cancellations.
+15. `ProcurementModule`: Hospital purchase order creation, dual-sign multi-signatory approval workflow, and Goods Received Note (GRN) warehouse intake with QA inspection, manufacturer batch/lot logging, and storage bin allocation.
+16. `PrivateInsuranceModule`: Commercial health payer adapters for Jubilee, AAR, APA, Britam, and Old Mutual providing real-time eligibility checking, copay computation, remaining limit tracking, and preauthorization requests.
+17. `RostersModule`: Hospital clinical and operational department organization, monthly duty roster scheduling, shift assignments (`MORNING`, `AFTERNOON`, `NIGHT`, `ON_CALL`, `OFF_DUTY`), and publication audit trails.
+18. `SaasAdministrationModule`: Commercial SaaS administration, tiered subscription plan catalogs, feature entitlements, usage metering with 80%/100% threshold notifications, platform invoicing with 16% Kenyan VAT, idempotent M-Pesa fee collection, 5-stage dunning progression, statutory patient safety clinical access safeguards (Health Act 2017), MRR/ARR reporting, payment reconciliation, gateway reliability telemetry, support cases, auditable time-bound support access tokens, and tenant offboarding with 10-year archival retention.
+

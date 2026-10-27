@@ -1,0 +1,7 @@
+# infra/terraform/environments/prod/terraform.tfvars.example
+# Copy to terraform.tfvars when provisioning production environment
+
+aws_region         = "af-south-1"
+availability_zones = ["ke-nairobi-1a", "ke-nairobi-1b"]
+certificate_arn    = "arn:aws:acm:af-south-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+alert_email        = "security-sre@afyapoa.co.ke"

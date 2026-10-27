@@ -1,0 +1,62 @@
+# infra/docker/Dockerfile.api
+# Multi-stage secure build for COMKEY AFYA POA Modular NestJS API
+# Hardened: Non-root user (UID 10001), dumb-init process reaper, zero devDependencies in runtime
+
+# Stage 1: Dependency & Build Base
+FROM node:20-alpine AS base
+WORKDIR /app
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@10.30.2 --activate
+
+# Stage 2: Monorepo Source Build
+FROM base AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/api/ ./apps/api/
+
+# Install all dependencies including workspace packages
+RUN pnpm install --frozen-lockfile
+
+# Build packages and API
+RUN pnpm --filter @afyapoa/api build
+RUN pnpm --filter @afyapoa/database build
+RUN pnpm --filter @afyapoa/config build
+RUN pnpm --filter @afyapoa/domain-core build
+RUN pnpm --filter @afyapoa/fhir-models build
+RUN pnpm --filter @afyapoa/integration-adapters build
+RUN pnpm --filter @afyapoa/logger build
+
+# Prune development dependencies for minimal production bundle
+RUN pnpm prune --prod
+
+# Stage 3: Hardened Minimal Production Runner
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache dumb-init wget
+ENV NODE_ENV=production
+ENV PORT=4000
+
+# Create unprivileged system group and user
+RUN addgroup -g 10001 -S appgroup && \
+    adduser -u 10001 -S appuser -G appgroup
+
+# Copy pruned dependencies, built packages, and API dist
+COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/packages ./packages
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./apps/api/dist
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder --chown=appuser:appgroup /app/package.json ./package.json
+
+# Switch to unprivileged non-root user
+USER appuser
+
+EXPOSE 4000
+
+# Container health probe
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "apps/api/dist/main.js"]

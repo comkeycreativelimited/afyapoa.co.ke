@@ -1,0 +1,52 @@
+{
+  "name": "@afyapoa/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ --ext .ts",
+    "test": "vitest run --fileParallelism=false"
+  },
+  "dependencies": {
+    "@afyapoa/config": "workspace:*",
+    "@afyapoa/database": "workspace:*",
+    "@afyapoa/domain-core": "workspace:*",
+    "@afyapoa/fhir-models": "workspace:*",
+    "@afyapoa/integration-adapters": "workspace:*",
+    "@afyapoa/logger": "workspace:*",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/swagger": "^8.1.1",
+    "@nestjs/terminus": "^10.2.3",
+    "@nestjs/throttler": "^6.7.1",
+    "bcryptjs": "^3.0.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "drizzle-orm": "^0.39.3",
+    "helmet": "^8.3.0",
+    "ioredis": "^5.5.0",
+    "otplib": "^13.5.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "postgres": "^3.4.5",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "@types/passport-jwt": "^4.0.1",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.6"
+  }
+}
